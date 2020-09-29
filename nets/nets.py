@@ -60,11 +60,16 @@ class survival_net(torch.nn.Module):
         self.middle_net = torch.nn.Sequential(*module_list)
 
     def forward(self,x_cov,y):
+        y.requires_grad=True
         x_cov = self.covariate_net(x_cov)
         h = self.middle_net(x_cov,y)
-        return h , h.sigmoid_()
+        F = h.sigmoid()
+        f = torch.autograd.grad(h,y,grad_outputs=torch.ones_like(y))*F*(1-F) #do y require grad??? backup plan is to just do numerical gradient wtf
+        y.requires_grad=False
+        return f , 1-F
 
-
+def log_objective(S,f,delta):
+    return (delta*f+(1-delta)*S).sum()
 
 
 
