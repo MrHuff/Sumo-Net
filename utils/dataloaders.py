@@ -2,8 +2,11 @@ from pycox.datasets import kkbox,support,metabric,gbsg,flchain
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import DataLoader
 import torch
+
+
 class surival_dataset(Dataset):
-    def __init__(self,str_identifier):
+    def __init__(self,str_identifier,seed=1337):
+
         super(surival_dataset, self).__init__()
         if str_identifier=='support':
             data = support
@@ -18,9 +21,9 @@ class surival_dataset(Dataset):
         self.delta_col = data.col_event
         self.y_col = data.col_duration
         df_train = data.read_df()
-        df_test = df_train.sample(frac=0.2)
+        df_test = df_train.sample(frac=0.2,random_state=seed)
         df_train = df_train.drop(df_test.index)
-        df_val = df_train.sample(frac=0.25)
+        df_val = df_train.sample(frac=0.25,random_state=seed)
         df_train = df_train.drop(df_val.index)
 
         self.split(df_train,'train')
@@ -45,7 +48,7 @@ class surival_dataset(Dataset):
     def __len__(self):
         return len(self.X.shape[0])
 
-def get_dataloader(str_identifier,bs):
-    d = surival_dataset(str_identifier)
+def get_dataloader(str_identifier,bs,seed):
+    d = surival_dataset(str_identifier,seed)
     dat = DataLoader(dataset=d,batch_size=bs)
     return dat
