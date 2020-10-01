@@ -3,25 +3,26 @@ from nets.nets import survival_net,log_objective
 from utils.dataloaders import get_dataloader
 import torch
 import os
-
+import pickle
 class hyperopt_training():
     def __init__(self,job_param,hyper_param_space):
         self.d_out = job_param['d_out']
         self.dataset_string = job_param['dataset_string']
         self.seed = job_param['seed']
-        self.eval_metric = job_param['eval_metric']
-        self.hyperopt_params = ['bounding_op','transformation','depth_x','width_x','depth','width','bs','lr']
         self.total_epochs = job_param['total_epochs']
         self.device = job_param['device']
         self.eval_objective = self.get_eval_objective(job_param['eval_metric'])
         self.global_loss_init = job_param['global_loss_init']
         self.patience = job_param['patience']
+        self.hyperits = job_param['hyperits']
         self.validation_interval = self.total_epochs//20
         self.global_hyperit = 0
         torch.cuda.set_device(self.device)
-        self.job_path = f'./{self.dataset_string}_{self.seed}/'
-        if not os.path.exists(self.job_path):
-            os.makedirs(self.job_path)
+        self.save_path = f'./{self.dataset_string}_{self.seed}/'
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr']
+        self.get_hyperparameterspace(hyper_param_space)
 
     def get_eval_objective(self,str):
         if str=='train':
@@ -71,8 +72,8 @@ class hyperopt_training():
                 y = y.to(self.device)
                 delta = delta.to(self.device)
                 f, S = self.model(X, y)
-                total+= self.eval_metric(f,S,delta)
-        return total
+                total+= self.eval_objective(f,S,delta)
+        return total.item()
 
     def validation_score(self):
         self.dataloader.dataset.set(mode='val')
@@ -83,7 +84,9 @@ class hyperopt_training():
         return self.eval_loop()
 
     def dump_model(self):
-        torch.save(self.model.state_dict(),self.job_path+f'best_model_{self.global_hyperit}.pt')
+        torch.save(self.model.state_dict(), self.save_path + f'best_model_{self.global_hyperit}.pt')
+    def load_model(self):
+        self.model.load_state_dict(torch.load(self.save_path + f'best_model_{self.global_hyperit}.pt'))
 
     def full_loop(self):
         counter = 0
@@ -94,15 +97,32 @@ class hyperopt_training():
                 val_loss = self.validation_score()
                 if val_loss<self.best:
                     best = val_loss
+                    print('new best val score: ',best,)
+                    print('Dumping model')
+                    self.dump_model()
+                else:
+                    counter+=1
             if counter > self.patience:
                 break
-
+        self.load_model()
         val_loss = self.validation_score()
         test_loss = self.test_score()
 
         return {'loss': -val_loss, 'status': STATUS_OK, 'test_loss': -test_loss}
 
 
+    def run(self):
+        trials = Trials()
+        best = fmin(fn=self,
+                    space=self.hyperparameter_space,
+                    algo=tpe.suggest,
+                    max_evals=self.hyperits,
+                    trials=trials,
+                    verbose=1)
+        print(space_eval(self.hyperparameter_space, best))
+        pickle.dump(trials,
+                    open(self.save_path + 'hyperopt_database.p',
+                         "wb"))
 
 
 
