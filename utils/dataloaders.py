@@ -34,7 +34,7 @@ class surival_dataset(Dataset):
     def split(self,df,mode='train'):
 
         setattr(self,f'{mode}_delta',torch.from_numpy(df[self.delta_col].values))
-        setattr(self,f'{mode}_y',torch.from_numpy(df[self.y_col].values))
+        setattr(self,f'{mode}_y',torch.from_numpy(df[self.y_col].values).unsqueeze(-1))
         setattr(self, f'{mode}_X', torch.from_numpy(df.drop([self.delta_col,self.y_col],axis=1).values))
 
     def set(self,mode='train'):
@@ -46,7 +46,7 @@ class surival_dataset(Dataset):
         return self.X[index,:],self.y[index],self.delta[index]
 
     def __len__(self):
-        return len(self.X.shape[0])
+        return self.X.shape[0]
 
 def get_dataloader(str_identifier,bs,seed):
     d = surival_dataset(str_identifier,seed)

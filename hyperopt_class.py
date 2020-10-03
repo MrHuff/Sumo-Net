@@ -91,11 +91,11 @@ class hyperopt_training():
     def full_loop(self):
         counter = 0
         best = self.global_loss_init
-        for i in self.total_epochs:
+        for i in range(self.total_epochs):
             self.training_loop()
             if i%self.validation_interval==0:
                 val_loss = self.validation_score()
-                if val_loss<self.best:
+                if val_loss<best:
                     best = val_loss
                     print('new best val score: ',best,)
                     print('Dumping model')
