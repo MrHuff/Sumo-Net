@@ -13,7 +13,7 @@ if __name__ == '__main__':
         'dataset_string': datasets[1],
         'seed': 123,
         'eval_metric': 'train',
-        'total_epochs':25,
+        'total_epochs':100,
         'device':0,
         'global_loss_init':np.inf,
         'patience':5,

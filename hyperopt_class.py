@@ -28,7 +28,7 @@ class hyperopt_training():
         if str=='train':
             return log_objective
         elif str=='c_score':
-            pass
+            pass #Stuff that compares with other stuff. Toy experiments for sanity check! Plot survival curve for different covariates and "true survival curve"
 
     def get_hyperparameterspace(self,hyper_param_space):
         self.hyperparameter_space = {}
@@ -36,6 +36,7 @@ class hyperopt_training():
             self.hyperparameter_space[string] = hp.choice(string, hyper_param_space[string])
 
     def __call__(self,parameters_in):
+        print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
         self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed)
         net_init_params = {
             'd_in_x' : self.dataloader.dataset.X.shape[1],
@@ -45,6 +46,7 @@ class hyperopt_training():
             'transformation':parameters_in['transformation'],
             'layers_x': [parameters_in['width_x']]*parameters_in['depth_x'],
             'layers': [parameters_in['width']]*parameters_in['depth'],
+            'direct_dif':parameters_in['direct_dif']
         }
         self.model = survival_net(**net_init_params).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'])
@@ -108,7 +110,7 @@ class hyperopt_training():
         val_loss = self.validation_score()
         test_loss = self.test_score()
 
-        return {'loss': -val_loss, 'status': STATUS_OK, 'test_loss': -test_loss}
+        return {'loss': val_loss, 'status': STATUS_OK, 'test_loss': test_loss}
 
 
     def run(self):
