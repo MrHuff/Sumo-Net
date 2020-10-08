@@ -4,6 +4,10 @@ from utils.dataloaders import get_dataloader
 import torch
 import os
 import pickle
+
+def square(x):
+    return x**2
+
 class hyperopt_training():
     def __init__(self,job_param,hyper_param_space):
         self.d_out = job_param['d_out']
@@ -15,13 +19,13 @@ class hyperopt_training():
         self.global_loss_init = job_param['global_loss_init']
         self.patience = job_param['patience']
         self.hyperits = job_param['hyperits']
-        self.validation_interval = self.total_epochs//20
+        self.validation_interval = 2
         self.global_hyperit = 0
         torch.cuda.set_device(self.device)
         self.save_path = f'./{self.dataset_string}_{self.seed}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif']
         self.get_hyperparameterspace(hyper_param_space)
 
     def get_eval_objective(self,str):
@@ -52,6 +56,7 @@ class hyperopt_training():
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'])
         results = self.full_loop()
         self.global_hyperit+=1
+        results['net_init_params'] = net_init_params
         return results
 
     def training_loop(self):
@@ -65,6 +70,7 @@ class hyperopt_training():
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
+        return loss.item()
 
     def eval_loop(self):
         total = 0
@@ -94,7 +100,7 @@ class hyperopt_training():
         counter = 0
         best = self.global_loss_init
         for i in range(self.total_epochs):
-            self.training_loop()
+            print(f'Epoch {i} training loss: ',self.training_loop())
             if i%self.validation_interval==0:
                 val_loss = self.validation_score()
                 if val_loss<best:
