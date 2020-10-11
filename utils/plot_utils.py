@@ -16,11 +16,12 @@ def load_best_model(dataset_string,seed):
 
 def plot_survival(fixed_X,model,max_time,plt_name,points=100):
     grid = torch.from_numpy(np.linspace(0,max_time,points)).float().unsqueeze(-1)
-    with torch.no_grad():
-        f,S=model(fixed_X.repeat(points,1),grid)
-        S = S.numpy()
 
-    plt.scatter(grid.numpy(),S,s=4)
+    for i in range(fixed_X.shape[0]):
+        with torch.no_grad():
+            f,S=model(fixed_X[i,:].unsqueeze(-1).repeat(points,1),grid)
+            S = S.numpy()
+        plt.scatter(grid.numpy(),S,s=4)
     plt.savefig(plt_name)
     plt.clf()
 

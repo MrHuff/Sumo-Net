@@ -13,7 +13,7 @@ datasets = ['support',
             ]
 job_params = {
     'd_out': 1,
-    'dataset_string': datasets[5],
+    'dataset_string': datasets[-1],
     'seed': 123,
     'eval_metric': 'train',
     'total_epochs': 100,
