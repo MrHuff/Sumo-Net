@@ -2,7 +2,7 @@ from pycox.datasets import kkbox,support,metabric,gbsg,flchain
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import DataLoader
 import torch
-
+from .toy_data_generation import toy_data_class
 
 class surival_dataset(Dataset):
     def __init__(self,str_identifier,seed=1337):
@@ -18,6 +18,13 @@ class surival_dataset(Dataset):
             data = flchain
         elif str_identifier=='kkbox':
             data = kkbox
+        elif str_identifier=='weibull':
+            data = toy_data_class(str_identifier)
+        elif str_identifier=='checkboard':
+            data = toy_data_class(str_identifier)
+        elif str_identifier=='normal':
+            data = toy_data_class(str_identifier)
+
         self.delta_col = data.col_event
         self.y_col = data.col_duration
         df_train = data.read_df()
