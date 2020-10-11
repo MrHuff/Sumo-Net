@@ -40,9 +40,9 @@ class surival_dataset(Dataset):
 
     def split(self,df,mode='train'):
 
-        setattr(self,f'{mode}_delta',torch.from_numpy(df[self.delta_col].values))
-        setattr(self,f'{mode}_y',torch.from_numpy(df[self.y_col].values).unsqueeze(-1))
-        setattr(self, f'{mode}_X', torch.from_numpy(df.drop([self.delta_col,self.y_col],axis=1).values))
+        setattr(self,f'{mode}_delta',torch.from_numpy(df[self.delta_col].values).float())
+        setattr(self,f'{mode}_y',torch.from_numpy(df[self.y_col].values).unsqueeze(-1).float())
+        setattr(self, f'{mode}_X', torch.from_numpy(df.drop([self.delta_col,self.y_col],axis=1).values).float())
 
     def set(self,mode='train'):
         self.X = getattr(self,f'{mode}_X')

@@ -7,8 +7,8 @@ class toy_data_class():
     def __init__(self,variant):
         self.load_path = f'./{variant}/'
         self.log_cols = ['x_1']
-        self.col_event = ['delta']
-        self.col_duration = ['y']
+        self.col_event = 'delta'
+        self.col_duration = 'y'
     def read_df(self):
         return pd.read_csv(self.load_path+'data.csv')
 

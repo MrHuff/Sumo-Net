@@ -6,11 +6,14 @@ datasets = ['support',
             'metabric',
             'gbsg',
             'flchain',
-            'kkbox'
+            'kkbox',
+            'weibull',
+            'checkboard',
+            'normal'
             ]
 job_params = {
     'd_out': 1,
-    'dataset_string': datasets[1],
+    'dataset_string': datasets[5],
     'seed': 123,
     'eval_metric': 'train',
     'total_epochs': 100,
