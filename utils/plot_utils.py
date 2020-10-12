@@ -19,7 +19,7 @@ def plot_survival(fixed_X,model,max_time,plt_name,points=100):
 
     for i in range(fixed_X.shape[0]):
         with torch.no_grad():
-            f,S=model(fixed_X[i,:].unsqueeze(-1).repeat(points,1),grid)
+            S=model.forward_S(fixed_X[i,:].unsqueeze(-1).repeat(points,1),grid)
             S = S.numpy()
         plt.scatter(grid.numpy(),S,s=4)
     plt.savefig(plt_name)

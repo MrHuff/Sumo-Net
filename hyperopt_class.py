@@ -65,8 +65,14 @@ class hyperopt_training():
             X = X.to(self.device)
             y = y.to(self.device)
             delta = delta.to(self.device)
-            f,S = self.model(X,y)
-            loss = log_objective(S,f,delta)
+            mask = delta==1
+            X_f = X[mask,:]
+            X_S = X[~mask,:]
+            y_f = y[mask,:]
+            y_S = y[~mask,:]
+            S = self.model(X_S,y_S)
+            f = self.model.forward_f(X_f,y_f)
+            loss = log_objective(S,f)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -79,9 +85,16 @@ class hyperopt_training():
                 X = X.to(self.device)
                 y = y.to(self.device)
                 delta = delta.to(self.device)
-                f, S = self.model(X, y)
-                total+= self.eval_objective(f,S,delta)
-        return total.item()
+                mask = delta == 1
+                X_f = X[mask, :]
+                X_S = X[~mask, :]
+                y_f = y[mask, :]
+                y_S = y[~mask, :]
+                S = self.model(X_S, y_S)
+                f = self.model.forward_f(X_f, y_f)
+                loss = self.eval_objective(S, f)
+                total+= loss
+        return total.mean().item()
 
     def validation_score(self):
         self.dataloader.dataset.set(mode='val')

@@ -1,5 +1,21 @@
 import torch
 
+class Log1PlusExp(torch.autograd.Function):
+    """Implementation of x ↦ log(1 + exp(x))."""
+    @staticmethod
+    def forward(ctx, x):
+        exp = x.exp()
+        ctx.save_for_backward(x)
+        y = exp.log1p()
+        return x.where(torch.isinf(exp),y.half() if x.type()=='torch.cuda.HalfTensor' else y )
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x, = ctx.saved_tensors
+        y = (-x).exp().half() if x.type()=='torch.cuda.HalfTensor' else (-x).exp()
+        return grad_output / (1 + y)
+
+log1plusexp = Log1PlusExp.apply
 class nn_node(torch.nn.Module):
     def __init__(self,d_in,d_out,transformation=torch.tanh):
         super(nn_node, self).__init__()
@@ -46,7 +62,7 @@ class survival_net(torch.nn.Module):
         super(survival_net, self).__init__()
         self.init_covariate_net(d_in_x,layers_x,transformation)
         self.init_middle_net(dx_in=layers_x[-1],d_in_y=d_in_y,d_out=d_out,layers=layers,transformation=transformation,bounding_op=bounding_op)
-        self.eps = 1e-6
+        self.eps = 1e-5
         self.direct = direct_dif
     def init_covariate_net(self,d_in_x,layers_x,transformation):
         module_list = [nn_node(d_in=d_in_x,d_out=layers_x[0],transformation=transformation)]
@@ -65,18 +81,30 @@ class survival_net(torch.nn.Module):
     def forward(self,x_cov,y):
         x_cov = self.covariate_net(x_cov)
         h = self.middle_net(self.mixed_layer(x_cov, y))
+        return -log1plusexp(h)
+
+    def forward_S(self,x_cov,y):
+        x_cov = self.covariate_net(x_cov)
+        h = self.middle_net(self.mixed_layer(x_cov, y))
+        return 1-h.sigmoid_()
+
+    def forward_f(self,x_cov,y):
+        x_cov = self.covariate_net(x_cov)
+        h = self.middle_net(self.mixed_layer(x_cov, y))
         h_forward = self.middle_net(self.mixed_layer(x_cov, y + self.eps))
         F = h.sigmoid()
         if self.direct:
             F_forward = h_forward.sigmoid()
-            f = (F_forward-F)/self.eps
+            f = ((F_forward - F) / self.eps)
         else:
-            f = ((h_forward-h)/self.eps) *F*(1-F)
+            # f = ((h_forward - h) / self.eps).log()+h-2*log1plusexp(h) #(F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
+            f = ((h_forward - h) / self.eps)*F*(1-F) #(F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
 
-        return f , 1-F
+        return f
 
-def log_objective(S,f,delta):
-    return -(delta*f+(1-delta)*S).sum()
+
+def log_objective(S,f):
+    return -(f+1e-6).log().sum()-S.sum()
 
 
 

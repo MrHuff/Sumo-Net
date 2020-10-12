@@ -9,8 +9,12 @@ class toy_data_class():
         self.log_cols = ['x_1']
         self.col_event = 'delta'
         self.col_duration = 'y'
+
     def read_df(self):
-        return pd.read_csv(self.load_path+'data.csv')
+        df = pd.read_csv(self.load_path+'data.csv')
+        print(df['x_1'].max())
+        print(df['y'].max())
+        return df
 
 class weibull():  # a weibull distribution with scale set to 1
 
