@@ -106,7 +106,8 @@ class survival_net(torch.nn.Module):
 def log_objective(S,f):
     return -(f+1e-6).log().sum()-S.sum()
 
-
+def log_objective_mean(S,f):
+    return -(f+1e-6).log().mean()-S.mean()
 
 
 

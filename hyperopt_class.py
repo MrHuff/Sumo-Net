@@ -41,6 +41,7 @@ class hyperopt_training():
 
     def __call__(self,parameters_in):
         print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
+        print(parameters_in)
         self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed)
         net_init_params = {
             'd_in_x' : self.dataloader.dataset.X.shape[1],

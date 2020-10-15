@@ -1,8 +1,25 @@
 import matplotlib.pyplot as plt
-import torch
 import numpy as np
 import pickle
 from nets.nets import *
+import matplotlib.cm as cm
+from matplotlib import rcParams
+
+
+rcParams.update({'figure.autolayout': True})
+plt.rcParams['savefig.dpi'] = 75
+plt.rcParams['figure.autolayout'] = False
+plt.rcParams['figure.figsize'] = 10, 6
+plt.rcParams['axes.labelsize'] = 35
+plt.rcParams['axes.titlesize'] = 35
+plt.rcParams['font.size'] = 35
+plt.rcParams['lines.linewidth'] = 2.0
+plt.rcParams['lines.markersize'] = 8
+plt.rcParams['legend.fontsize'] = 26
+plt.rcParams['text.usetex'] = True
+plt.rcParams['font.family'] = "serif"
+plt.rcParams['font.serif'] = "cm"
+
 
 def load_best_model(dataset_string,seed):
     PATH =f'./{dataset_string}_{seed}/'
@@ -21,7 +38,7 @@ def plot_survival(fixed_X,model,max_time,plt_name,points=100,begin=0):
         with torch.no_grad():
             S=model.forward_S(fixed_X[i,:].unsqueeze(-1).repeat(points,1),grid)
             S = S.numpy()
-        plt.scatter(grid.numpy(),S,s=4)
+        plt.plot(grid.numpy(), S)
     plt.savefig(plt_name)
     plt.clf()
 
