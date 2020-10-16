@@ -14,19 +14,20 @@ datasets = ['support',
 
 hyper_param_space = {
     #torch.nn.functional.elu,torch.nn.functional.relu,
-    'bounding_op': [torch.nn.functional.relu,],  # torch.sigmoid, torch.relu, torch.exp,
+    'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
     'transformation': [torch.nn.functional.tanh,],
     'depth_x': [1],
-    'width_x': [128],
+    'width_x': [32],
     'depth': [1],
-    'width': [128],
-    'bs': [2000],
+    'width': [32],
+    'bs': [64],
     'lr': [1e-3],
     'direct_dif':[False]
 
 }
 if __name__ == '__main__':
     #Evaluate other toy examples to draw further conclusions...
+    # Time component might need to be normalized...
     for i in [7]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         device = devices[0]

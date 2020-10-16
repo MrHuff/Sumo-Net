@@ -43,5 +43,15 @@ def plot_survival(fixed_X,model,max_time,plt_name,points=100,begin=0):
     plt.clf()
 
 
+def plot_hazard(fixed_X,model,max_time,plt_name,points=100,begin=0):
+    grid = torch.from_numpy(np.linspace(begin,max_time,points)).float().unsqueeze(-1)
+    for i in range(fixed_X.shape[0]):
+        with torch.no_grad():
+            S=model.forward_cum_h(fixed_X[i,:].unsqueeze(-1).repeat(points,1),grid)
+            S = S.numpy()
+            S = np.exp(-S)
+        plt.plot(grid.numpy(), S)
+    plt.savefig(plt_name)
+    plt.clf()
 
 

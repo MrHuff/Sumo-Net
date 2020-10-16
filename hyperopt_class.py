@@ -1,5 +1,5 @@
 from hyperopt import hp,tpe,Trials,fmin,space_eval,STATUS_OK,STATUS_FAIL
-from nets.nets import survival_net,log_objective
+from nets.nets import *
 from utils.dataloaders import get_dataloader
 import torch
 import os
@@ -68,12 +68,10 @@ class hyperopt_training():
             delta = delta.to(self.device)
             mask = delta==1
             X_f = X[mask,:]
-            X_S = X[~mask,:]
             y_f = y[mask,:]
-            y_S = y[~mask,:]
-            S = self.model(X_S,y_S)
-            f = self.model.forward_f(X_f,y_f)
-            loss = log_objective(S,f)
+            S = self.model.forward_cum_h(X,y)
+            f = self.model.forward_h(X_f,y_f)
+            loss = log_objective_hazard(S,f)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()

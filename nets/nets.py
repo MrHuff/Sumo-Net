@@ -42,11 +42,11 @@ class mixed_layer(torch.nn.Module):
         self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out)), requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
-        self.pos_bias = torch.nn.Parameter(torch.randn(d_out), requires_grad=True)
+        self.bias = torch.nn.Parameter(torch.randn(d_out), requires_grad=True)
         self.w = torch.nn.Linear(d_in,d_out)
 
     def forward(self,X,x_bounded):
-        return self.f(x_bounded @ self.bounding_op(self.pos_weights) + self.pos_bias + self.w(X))
+        return self.f(x_bounded @ self.bounding_op(self.pos_weights) + self.bias + self.w(X))
 
 class survival_net(torch.nn.Module):
     def __init__(self,
@@ -102,12 +102,30 @@ class survival_net(torch.nn.Module):
 
         return f
 
+    def forward_cum_h(self,x_cov,y):
+        x_cov = self.covariate_net(x_cov)
+        h = self.middle_net(self.mixed_layer(x_cov, y))
+        cum_hazard = torch.relu(h)
+        return cum_hazard
+
+    def forward_h(self,x_cov,y):
+        x_cov = self.covariate_net(x_cov)
+        h = self.middle_net(self.mixed_layer(x_cov, y))
+        h_forward = self.middle_net(self.mixed_layer(x_cov, y + self.eps))
+        hazard = (torch.relu(h_forward) - torch.relu(h))/self.eps
+        return hazard
+
 
 def log_objective(S,f):
     return -(f+1e-6).log().sum()-S.sum()
 
 def log_objective_mean(S,f):
     return -(f+1e-6).log().mean()-S.mean()
+
+def log_objective_hazard(cum_hazard,hazard): #here cum_hazard should be a vector of
+    # length n, and hazard only needs to be computed for all individuals with
+    # delta = 1 I'm not sure how to implement that best?
+    return -(  (hazard+1e-6).log().sum()-cum_hazard.sum() )
 
 
 

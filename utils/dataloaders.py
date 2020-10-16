@@ -57,5 +57,5 @@ class surival_dataset(Dataset):
 
 def get_dataloader(str_identifier,bs,seed):
     d = surival_dataset(str_identifier,seed)
-    dat = DataLoader(dataset=d,batch_size=bs)
+    dat = DataLoader(dataset=d,batch_size=bs,shuffle=True)
     return dat
