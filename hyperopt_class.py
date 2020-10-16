@@ -10,12 +10,12 @@ def square(x):
 
 class hyperopt_training():
     def __init__(self,job_param,hyper_param_space):
+        self.eval_ob_string = job_param['eval_metric']
         self.d_out = job_param['d_out']
         self.dataset_string = job_param['dataset_string']
         self.seed = job_param['seed']
         self.total_epochs = job_param['total_epochs']
         self.device = job_param['device']
-        self.eval_objective = self.get_eval_objective(job_param['eval_metric'])
         self.global_loss_init = job_param['global_loss_init']
         self.patience = job_param['patience']
         self.hyperits = job_param['hyperits']
@@ -25,12 +25,12 @@ class hyperopt_training():
         self.save_path = f'./{self.dataset_string}_{self.seed}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','objective']
         self.get_hyperparameterspace(hyper_param_space)
 
-    def get_eval_objective(self,str):
+    def get_eval_objective(self,str,obj):
         if str=='train':
-            return log_objective
+            return get_objective(obj)
         elif str=='c_score':
             pass #Stuff that compares with other stuff. Toy experiments for sanity check! Plot survival curve for different covariates and "true survival curve"
 
@@ -51,8 +51,11 @@ class hyperopt_training():
             'transformation':parameters_in['transformation'],
             'layers_x': [parameters_in['width_x']]*parameters_in['depth_x'],
             'layers': [parameters_in['width']]*parameters_in['depth'],
-            'direct_dif':parameters_in['direct_dif']
+            'direct_dif':parameters_in['direct_dif'],
+            'objective':parameters_in['objective']
         }
+        self.eval_objective = self.get_eval_objective(self.eval_ob_string,parameters_in['objective'])
+        self.train_objective = get_objective(parameters_in['objective'])
         self.model = survival_net(**net_init_params).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'])
         results = self.full_loop()
@@ -67,11 +70,11 @@ class hyperopt_training():
             y = y.to(self.device)
             delta = delta.to(self.device)
             mask = delta==1
-            X_f = X[mask,:]
-            y_f = y[mask,:]
-            S = self.model.forward_cum_h(X,y)
-            f = self.model.forward_h(X_f,y_f)
-            loss = log_objective_hazard(S,f)
+            X_f = X[mask, :]
+            y_f = y[mask, :]
+            S = self.model.forward_cum(X,y,mask)
+            f = self.model(X_f,y_f)
+            loss = self.train_objective(S,f)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -86,14 +89,12 @@ class hyperopt_training():
                 delta = delta.to(self.device)
                 mask = delta == 1
                 X_f = X[mask, :]
-                X_S = X[~mask, :]
                 y_f = y[mask, :]
-                y_S = y[~mask, :]
-                S = self.model(X_S, y_S)
-                f = self.model.forward_f(X_f, y_f)
+                S = self.model.forward_cum(X, y,mask)
+                f = self.model(X_f, y_f)
                 loss = self.eval_objective(S, f)
                 total+= loss
-        return total.mean().item()
+        return total.item()
 
     def validation_score(self):
         self.dataloader.dataset.set(mode='val')

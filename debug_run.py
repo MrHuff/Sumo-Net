@@ -16,13 +16,14 @@ hyper_param_space = {
     #torch.nn.functional.elu,torch.nn.functional.relu,
     'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
     'transformation': [torch.nn.functional.tanh,],
-    'depth_x': [1],
-    'width_x': [32],
-    'depth': [1],
-    'width': [32],
-    'bs': [64],
+    'depth_x': [2,3],
+    'width_x': [8,16,32],
+    'depth': [2,3],
+    'width': [8,16,32],
+    'bs': [64,512,2048],
     'lr': [1e-3],
-    'direct_dif':[False]
+    'direct_dif':[False],
+    'objective':['hazard']
 
 }
 if __name__ == '__main__':
@@ -40,7 +41,7 @@ if __name__ == '__main__':
             'device': device,
             'global_loss_init': np.inf,
             'patience': 10,
-            'hyperits': 3,
+            'hyperits': 5,
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         training_obj.run()
