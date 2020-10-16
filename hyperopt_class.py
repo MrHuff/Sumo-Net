@@ -65,6 +65,7 @@ class hyperopt_training():
 
     def training_loop(self):
         self.dataloader.dataset.set(mode='train')
+        total_loss_train=0
         for i,(X,y,delta) in enumerate(self.dataloader):
             X = X.to(self.device)
             y = y.to(self.device)
@@ -78,7 +79,8 @@ class hyperopt_training():
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-        return loss.item()
+            total_loss_train+=loss.item()
+        return total_loss_train
 
     def eval_loop(self):
         total = 0

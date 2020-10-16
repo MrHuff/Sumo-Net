@@ -20,16 +20,16 @@ hyper_param_space = {
     'width_x': [8,16,32],
     'depth': [2,3],
     'width': [8,16,32],
-    'bs': [64,512,2048],
-    'lr': [1e-3],
+    'bs': [4096],
+    'lr': [1e-2,1e-3],
     'direct_dif':[False],
-    'objective':['hazard']
+    'objective':['hazard','S']
 
 }
 if __name__ == '__main__':
     #Evaluate other toy examples to draw further conclusions...
     # Time component might need to be normalized...
-    for i in [7]:
+    for i in [5,6,7]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         device = devices[0]
         job_params = {

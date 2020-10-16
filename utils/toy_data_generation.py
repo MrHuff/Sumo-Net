@@ -94,7 +94,7 @@ class varying_normals():
 def get_delta_and_z(t,c):
     d = np.int32(c > t)
     z = np.minimum(t, c)
-    z = (z-z.mean())/z.std()
+    #z = (z-z.mean())/z.std()
     return d,z
 
 

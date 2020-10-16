@@ -66,7 +66,7 @@ class survival_net(torch.nn.Module):
         self.eps = 1e-5
         self.direct = direct_dif
         self.objective  = objective
-        if self.objective in ['hazard']:
+        if self.objective in ['hazard','hazard_mean']:
             self.f = self.forward_hazard
             self.f_cum = self.forward_cum_hazard
         elif self.objective in ['S','S_mean']:
@@ -126,7 +126,7 @@ class survival_net(torch.nn.Module):
         return hazard
 
     def forward_S_eval(self,x_cov,y):
-        if self.objective in ['hazard']:
+        if self.objective in ['hazard','hazard_mean']:
             S = torch.exp(-self.forward_cum_hazard(x_cov, y, []))
             return S
         elif self.objective in ['S','S_mean']:
@@ -137,6 +137,8 @@ class survival_net(torch.nn.Module):
 def get_objective(objective):
     if objective == 'hazard':
         return log_objective_hazard
+    if objective == 'hazard_mean':
+        return log_objective_hazard_mean
     elif objective == 'S':
         return log_objective
     elif objective=='S_mean':
@@ -153,6 +155,10 @@ def log_objective_hazard(cum_hazard,hazard): #here cum_hazard should be a vector
     # delta = 1 I'm not sure how to implement that best?
     return -(  (hazard+1e-6).log().sum()-cum_hazard.sum() )
 
+def log_objective_hazard_mean(cum_hazard,hazard): #here cum_hazard should be a vector of
+    # length n, and hazard only needs to be computed for all individuals with
+    # delta = 1 I'm not sure how to implement that best?
+    return -(  (hazard+1e-6).log().mean()-cum_hazard.mean() )
 
 
 
