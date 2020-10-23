@@ -12,8 +12,8 @@ class toy_data_class():
 
     def read_df(self):
         df = pd.read_csv(self.load_path+'data.csv')
-        print(df['x_1'].max())
-        print(df['y'].max())
+        print('covariate (X)', df['x_1'].max())
+        print('target (y)', df['y'].max())
         return df
 
 class weibull():  # a weibull distribution with scale set to 1
@@ -90,14 +90,14 @@ class varying_normals():
         return (x, t)
 
     def get_censoring(self,n):
-        # return np.random.normal(loc=self.mean, scale=np.abs(self.var_slope), size=n)
-        return np.random.exponential(self.mean, size=n)
+        return np.random.normal(loc=self.mean, scale=np.abs(self.var_slope), size=n)
+        #return np.random.exponential(self.mean, size=n)
 
 
 def get_delta_and_z(t,c):
     d = np.int32(c > t)
     z = np.minimum(t, c)
-    #z = (z-z.mean())/z.std()
+    #z = (z-z.mean())/z.var()
     return d,z
 
 
@@ -121,7 +121,7 @@ def generate_toy_data(variant,n,**kwargs):
 
 if __name__ == '__main__':
     n=25000
-    kwargs = {'a': 2.,'b':6.,'grid_width': 1., 'grid_length': 1., 'num_tiles_width': 4., 'num_tiles_length': 6.,'mean':10.,'var_slope':1.,'intercept':5}
+    kwargs = {'a': 2.,'b':6.,'grid_width': 1., 'grid_length': 1., 'num_tiles_width': 4., 'num_tiles_length': 6.,'mean':100.,'var_slope':6.,'intercept':0}
     for variant in ['weibull','checkboard','normal']:
         generate_toy_data(variant,n,**kwargs)
 

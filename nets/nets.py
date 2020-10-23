@@ -74,12 +74,14 @@ class survival_net(torch.nn.Module):
             self.f_cum=self.forward_S
 
     def init_covariate_net(self,d_in_x,layers_x,transformation):
+        self.bs_x=torch.nn.BatchNorm1d(num_features=d_in_x)
         module_list = [nn_node(d_in=d_in_x,d_out=layers_x[0],transformation=transformation)]
         for l_i in range(1,len(layers_x)):
             module_list.append(nn_node(d_in=layers_x[l_i-1],d_out=layers_x[l_i],transformation=transformation))
         self.covariate_net = torch.nn.Sequential(*module_list)
 
     def init_middle_net(self,dx_in,d_in_y,d_out,layers,transformation,bounding_op):
+        self.bs = torch.nn.BatchNorm1d(num_features=d_in_y)
         self.mixed_layer = mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], transformation=transformation, bounding_op=bounding_op)
         module_list = []
         for l_i in range(1,len(layers)):
@@ -96,12 +98,16 @@ class survival_net(torch.nn.Module):
     def forward_S(self,x_cov,y,mask):
         x_cov = x_cov[~mask,:]
         y = y[~mask,:]
+        x_cov =self.bs_x(x_cov)
+        y = self.bs(y)
         x_cov = self.covariate_net(x_cov)
         h = self.middle_net(self.mixed_layer(x_cov, y))
         return -log1plusexp(h)
 
     def forward_f(self,x_cov,y):
         x_cov = self.covariate_net(x_cov)
+        y = self.bs(y)
+        x_cov = self.bs_x(x_cov)
         h = self.middle_net(self.mixed_layer(x_cov, y))
         h_forward = self.middle_net(self.mixed_layer(x_cov, y + self.eps))
         F = h.sigmoid()
@@ -130,6 +136,8 @@ class survival_net(torch.nn.Module):
             S = torch.exp(-self.forward_cum_hazard(x_cov, y, []))
             return S
         elif self.objective in ['S','S_mean']:
+            x_cov = self.bs_x(x_cov)
+            y = self.bs(y)
             x_cov = self.covariate_net(x_cov)
             h = self.middle_net(self.mixed_layer(x_cov, y))
             return 1-h.sigmoid_()

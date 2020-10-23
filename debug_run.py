@@ -29,7 +29,7 @@ hyper_param_space = {
 if __name__ == '__main__':
     #Evaluate other toy examples to draw further conclusions...
     # Time component might need to be normalized...
-    for i in [7]:
+    for i in [5,6,7]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         device = devices[0]
         job_params = {
