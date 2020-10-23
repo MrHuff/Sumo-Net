@@ -148,7 +148,8 @@ def log_objective(S,f):
     return -(f+1e-6).log().sum()-S.sum()
 
 def log_objective_mean(S,f):
-    return -(f+1e-6).log().mean()-S.mean()
+    n = S.shape[0]+f.shape[0]
+    return -((f+1e-6).log().sum()+S.sum())/n
 
 def log_objective_hazard(cum_hazard,hazard): #here cum_hazard should be a vector of
     # length n, and hazard only needs to be computed for all individuals with
@@ -158,7 +159,8 @@ def log_objective_hazard(cum_hazard,hazard): #here cum_hazard should be a vector
 def log_objective_hazard_mean(cum_hazard,hazard): #here cum_hazard should be a vector of
     # length n, and hazard only needs to be computed for all individuals with
     # delta = 1 I'm not sure how to implement that best?
-    return -(  (hazard+1e-6).log().mean()-cum_hazard.mean() )
+    n = cum_hazard.shape[0]+hazard.shape[0]
+    return -(  (hazard+1e-6).log().sum()-cum_hazard.sum() )/n
 
 
 

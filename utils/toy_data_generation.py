@@ -74,22 +74,25 @@ class checkerboard_grid():
 
 class varying_normals():
 
-    def __init__(self, mean, var_slope):
+    def __init__(self, mean, var_slope,intercept):
         self.mean = mean
         self.var_slope = var_slope
+        self.intercept = intercept
 
     def surv_given_x(self, t, x):
-        return (1 - scipy.stats.norm.cdf(t, loc=self.mean, scale=1 + self.var_slope * x))
+        return (1 - scipy.stats.norm.cdf(t, loc=self.mean, scale=self.intercept + self.var_slope * x))
 
     def sample(self, n):
         x = np.random.uniform(size=n)
         t = np.zeros(shape=n)
         for i in range(n):
-            t[i] = np.random.normal(loc=self.mean, scale=1. + self.var_slope * x[i])
+            t[i] = np.random.normal(loc=self.mean, scale=self.intercept + self.var_slope * x[i])
         return (x, t)
 
     def get_censoring(self,n):
-        return np.random.normal(loc=self.mean, scale=self.var_slope, size=n)
+        # return np.random.normal(loc=self.mean, scale=np.abs(self.var_slope), size=n)
+        return np.random.exponential(self.mean, size=n)
+
 
 def get_delta_and_z(t,c):
     d = np.int32(c > t)
@@ -104,7 +107,7 @@ def generate_toy_data(variant,n,**kwargs):
     elif variant=='checkboard':
         d = checkerboard_grid(kwargs['grid_width'],kwargs['grid_length'],kwargs['num_tiles_width'],kwargs['num_tiles_length'])
     elif variant =='normal':
-        d = varying_normals(kwargs['mean'],kwargs['var_slope'])
+        d = varying_normals(kwargs['mean'],kwargs['var_slope'],kwargs['intercept'])
 
     x,t = d.sample(n)
     c = d.get_censoring(n)
@@ -118,7 +121,7 @@ def generate_toy_data(variant,n,**kwargs):
 
 if __name__ == '__main__':
     n=25000
-    kwargs = {'a': 2.,'b':6.,'grid_width': 1., 'grid_length': 1., 'num_tiles_width': 4., 'num_tiles_length': 6.,'mean':100.,'var_slope':6.}
+    kwargs = {'a': 2.,'b':6.,'grid_width': 1., 'grid_length': 1., 'num_tiles_width': 4., 'num_tiles_length': 6.,'mean':10.,'var_slope':1.,'intercept':5}
     for variant in ['weibull','checkboard','normal']:
         generate_toy_data(variant,n,**kwargs)
 
