@@ -17,10 +17,10 @@ hyper_param_space = {
     'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
     'transformation': [torch.nn.functional.tanh,],
     'depth_x': [2],
-    'width_x': [32],
+    'width_x': [64],
     'depth': [2],
-    'width': [32],
-    'bs': [1000],
+    'width': [64],
+    'bs': [2500],
     'lr': [1e-3],
     'direct_dif':[False],
     'objective':['S_mean']
@@ -29,7 +29,7 @@ hyper_param_space = {
 if __name__ == '__main__':
     #Evaluate other toy examples to draw further conclusions...
     # Time component might need to be normalized...
-    for i in [5,6,7]:
+    for i in [6]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         device = devices[0]
         job_params = {
@@ -37,11 +37,11 @@ if __name__ == '__main__':
             'dataset_string': datasets[i],
             'seed': 123,
             'eval_metric': 'train',
-            'total_epochs': 100,
+            'total_epochs': 250,
             'device': device,
             'global_loss_init': np.inf,
             'patience': 10,
-            'hyperits': 3,
+            'hyperits': 1,
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         training_obj.run()

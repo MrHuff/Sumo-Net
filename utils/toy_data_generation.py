@@ -3,6 +3,26 @@ import math
 import scipy
 import pandas as pd
 import os
+import matplotlib.pyplot as plt
+from matplotlib import rcParams
+import matplotlib.cm as cm
+import scipy.stats
+from statsmodels.distributions import ECDF
+#Empirical CDF
+rcParams.update({'figure.autolayout': True})
+plt.rcParams['savefig.dpi'] = 75
+plt.rcParams['figure.autolayout'] = False
+plt.rcParams['figure.figsize'] = 10, 6
+plt.rcParams['axes.labelsize'] = 35
+plt.rcParams['axes.titlesize'] = 35
+plt.rcParams['font.size'] = 35
+plt.rcParams['lines.linewidth'] = 2.0
+plt.rcParams['lines.markersize'] = 8
+plt.rcParams['legend.fontsize'] = 26
+plt.rcParams['text.usetex'] = True
+plt.rcParams['font.family'] = "serif"
+plt.rcParams['font.serif'] = "cm"
+
 class toy_data_class():
     def __init__(self,variant):
         self.load_path = f'./{variant}/'
@@ -17,7 +37,6 @@ class toy_data_class():
         return df
 
 class weibull():  # a weibull distribution with scale set to 1
-
     def __init__(self, a, b):
         self.a = a
         self.b = b
@@ -39,9 +58,7 @@ class weibull():  # a weibull distribution with scale set to 1
     def get_censoring(self,n):
         return np.random.exponential(1.5, size = n)
 
-
 class checkerboard_grid():
-
     def __init__(self, grid_width, grid_length, num_tiles_width,
                  num_tiles_length):  # num_tiles_length needs to be even.
         self.grid_width = grid_width
@@ -69,6 +86,7 @@ class checkerboard_grid():
         t += np.random.choice(np.arange(0, self.num_tiles_length, step=2), size=n) * self.tile_length
         t += np.random.uniform(low=0, high=self.tile_length, size=n)
         return (x, t)
+
     def get_censoring(self,n):
         return np.random.exponential(1.5, size = n)
 
@@ -93,25 +111,82 @@ class varying_normals():
         return np.random.normal(loc=self.mean, scale=np.abs(self.var_slope), size=n)
         #return np.random.exponential(self.mean, size=n)
 
-
 def get_delta_and_z(t,c):
     d = np.int32(c > t)
     z = np.minimum(t, c)
-    #z = (z-z.mean())/z.var()
     return d,z
 
+def unit_scaling(z): #Trick is probably to match x's and y's... i.e. it gets confused if function has to map "sparsely"
+    mean = z.mean()
+    std = z.std()
+    z = (z-mean)/std
+    return z
+
+def max_min_scaling(x):
+    max = x.max()
+    min = x.min()
+    return (x-min)/(max-min), min ,max
+
+def cum_f_plot(variant,x_array,t_array,d,comment):
+    for x in x_array:
+        S = lambda t: d.surv_given_x(t, x)
+        S_array = [S(t) for t in t_array]
+        plt.plot(t_array, S_array, color=cm.hot(x))
+    plt.savefig(f"{variant}_{comment}.png", bbox_inches='tight')
+    plt.clf()
+
+
+def scatter_plot_1(variant,x,t,comment):
+    plt.scatter(x, t)
+    plt.savefig(f'{variant}_scatter_{comment}.png')
+    plt.clf()
+
+def scatter_plot_2(variant,x,z,observed,censored):
+    fig_1 = plt.axes()
+    fig_1.scatter(x[observed], z[observed], c='navy', label='observed')
+    fig_1.figure.savefig(f'{variant}_observed.png')
+    fig_2 = plt.axes()
+    fig_2.scatter(x[censored], z[censored], facecolors='none', edgecolors='r', label='censored')
+    fig_2.figure.savefig(f'{variant}_censored.png')
+    fig_2.figure.clf()
+    fig_1.figure.clf()
+
+def empirical_cdf(variant,t,comment):
+    ecdf = ECDF(t)
+    plt.scatter(ecdf.x,1-ecdf.y)
+    plt.savefig(f'{variant}_{comment}_ecdf.png')
+    plt.clf()
 
 def generate_toy_data(variant,n,**kwargs):
     if variant=='weibull':
-        d = weibull(kwargs['a'],kwargs['b'])
+        t_array = np.linspace(0, 2, num=100)
+        x_array = [0, 0.3, 1]
+        dist = weibull(kwargs['a'],kwargs['b'])
     elif variant=='checkboard':
-        d = checkerboard_grid(kwargs['grid_width'],kwargs['grid_length'],kwargs['num_tiles_width'],kwargs['num_tiles_length'])
+        t_array = np.linspace(0, 1, num=100)
+        x_array = [0.1, 0.2, 0.4, 0.6, 0.8, 1]
+        dist = checkerboard_grid(kwargs['grid_width'],kwargs['grid_length'],kwargs['num_tiles_width'],kwargs['num_tiles_length'])
     elif variant =='normal':
-        d = varying_normals(kwargs['mean'],kwargs['var_slope'],kwargs['intercept'])
+        t_array = np.linspace(0, 150, num=100)
+        x_array = [0.0, 0.2, 0.4, 0.6, 0.8, 1]
+        dist = varying_normals(kwargs['mean'],kwargs['var_slope'],kwargs['intercept'])
 
-    x,t = d.sample(n)
-    c = d.get_censoring(n)
+    x,t = dist.sample(n)
+    empirical_cdf(variant,t,'pre')
+    cum_f_plot(variant=variant,x_array=x_array,t_array=t_array,d=dist,comment='pre')
+    scatter_plot_1(variant,x,t,'pre')
+    c = dist.get_censoring(n)
     d,z =get_delta_and_z(t,c)
+    z,z_min,z_max = max_min_scaling(z)
+    x,x_min,x_max = max_min_scaling(x)
+    t,t_min,t_max = max_min_scaling(t)
+    empirical_cdf(variant,t,'after')
+
+    scatter_plot_1(variant,x,t,'after')
+    censored, observed = np.where(d == 0), np.where(d == 1)
+    scatter_plot_2(variant,x,z,observed,censored)
+    cum_f_plot(variant,(x_array-x_min)/(x_max-x_min),(t_array-t_min)/(t_max-t_min),dist,'after')
+
     cols = ['x_1','delta','y']
     df = pd.DataFrame(np.stack([x,d,z],axis=1),columns=cols)
     data_path =f'../{variant}/'

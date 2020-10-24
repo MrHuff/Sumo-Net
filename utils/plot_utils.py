@@ -1,8 +1,7 @@
-import matplotlib.pyplot as plt
 import numpy as np
 import pickle
 from nets.nets import *
-import matplotlib.cm as cm
+import matplotlib.pyplot as plt
 from matplotlib import rcParams
 
 
