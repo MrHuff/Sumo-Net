@@ -115,14 +115,16 @@ class survival_net(torch.nn.Module):
     def forward_cum_hazard(self, x_cov, y, mask):
         x_cov = self.covariate_net(x_cov)
         h = self.middle_net(self.mixed_layer(x_cov, y))
-        cum_hazard = torch.relu(h)
-        return cum_hazard
+        return log1plusexp(h)
 
     def forward_hazard(self, x_cov, y):
         x_cov = self.covariate_net(x_cov)
         h = self.middle_net(self.mixed_layer(x_cov, y))
         h_forward = self.middle_net(self.mixed_layer(x_cov, y + self.eps))
-        hazard = (torch.relu(h_forward) - torch.relu(h))/self.eps
+        if self.direct:
+            hazard = (log1plusexp(h_forward) - log1plusexp(h))/self.eps
+        else:
+            hazard = ((h_forward-h)/self.eps)*torch.sigmoid(h)
         return hazard
 
     def forward_S_eval(self,x_cov,y):

@@ -164,7 +164,7 @@ def generate_toy_data(variant,n,**kwargs):
         dist = weibull(kwargs['a'],kwargs['b'])
     elif variant=='checkboard':
         t_array = np.linspace(0, 1, num=100)
-        x_array = [0.1, 0.2, 0.4, 0.6, 0.8, 1]
+        x_array = [0.1, 0.4]
         dist = checkerboard_grid(kwargs['grid_width'],kwargs['grid_length'],kwargs['num_tiles_width'],kwargs['num_tiles_length'])
     elif variant =='normal':
         t_array = np.linspace(0, 150, num=100)

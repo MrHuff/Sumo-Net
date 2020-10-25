@@ -23,7 +23,7 @@ hyper_param_space = {
     'bs': [250],
     'lr': [1e-3],
     'direct_dif':[False],
-    'objective':['S_mean']
+    'objective':['hazard_mean']
 
 }
 if __name__ == '__main__':
