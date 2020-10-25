@@ -20,7 +20,7 @@ hyper_param_space = {
     'width_x': [64],
     'depth': [2],
     'width': [64],
-    'bs': [2500],
+    'bs': [250],
     'lr': [1e-3],
     'direct_dif':[False],
     'objective':['S_mean']
@@ -29,7 +29,7 @@ hyper_param_space = {
 if __name__ == '__main__':
     #Evaluate other toy examples to draw further conclusions...
     # Time component might need to be normalized...
-    for i in [6]:
+    for i in [5,6,7]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         device = devices[0]
         job_params = {
@@ -40,8 +40,8 @@ if __name__ == '__main__':
             'total_epochs': 250,
             'device': device,
             'global_loss_init': np.inf,
-            'patience': 10,
-            'hyperits': 1,
+            'patience': 50,
+            'hyperits': 2,
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         training_obj.run()

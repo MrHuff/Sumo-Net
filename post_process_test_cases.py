@@ -3,7 +3,7 @@ from utils.dataloaders import *
 from debug_run import datasets
 
 ds = [5,6,7]
-X_list = [torch.Tensor([[0],[0.3],[1.0]]),torch.Tensor([[0.5],[0.4]]),torch.Tensor([[0.0],[0.2],[0.4],[0.6],[0.8],[1.0]])]
+X_list = [torch.Tensor([[0],[0.3],[1.0]]),torch.Tensor([[0.0],[0.2],[0.4],[0.6],[0.8],[1.0]]),torch.Tensor([[0.0],[0.2],[0.4],[0.6],[0.8],[1.0]])]
 T_list = [1,1,1]
 for i in [1]:
     X = X_list[i]
