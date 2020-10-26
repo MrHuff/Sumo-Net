@@ -2,6 +2,7 @@ from hyperopt_class import *
 import numpy as np
 import torch
 import GPUtil
+
 datasets = ['support',
             'metabric',
             'gbsg',
@@ -13,23 +14,23 @@ datasets = ['support',
             ]
 
 hyper_param_space = {
-    #torch.nn.functional.elu,torch.nn.functional.relu,
+    # torch.nn.functional.elu,torch.nn.functional.relu,
     'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
-    'transformation': [torch.nn.functional.tanh,],
-    'depth_x': [2,3],
-    'width_x': [8,16,32],
-    'depth': [2,3],
-    'width': [8,16,32],
+    'transformation': [torch.nn.functional.tanh],  # torch.nn.functional.tanh,
+    'depth_x': [3, 5, 7],
+    'width_x': [32, 64],
+    'depth': [3, 5],
+    'width': [8, 16, 32],
     'bs': [4096],
-    'lr': [1e-2,1e-3],
-    'direct_dif':[False],
-    'objective':['hazard','S']
+    'lr': [1e-2, 1e-3],
+    'direct_dif': [False],
+    'objective': ['survival']
 
 }
 if __name__ == '__main__':
-    #Evaluate other toy examples to draw further conclusions...
+    # Evaluate other toy examples to draw further conclusions...
     # Time component might need to be normalized...
-    for i in [5,6,7]:
+    for i in [5, 6, 7]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         device = devices[0]
         job_params = {
@@ -43,5 +44,5 @@ if __name__ == '__main__':
             'patience': 10,
             'hyperits': 5,
         }
-        training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
+        training_obj = hyperopt_training(job_param=job_params, hyper_param_space=hyper_param_space)
         training_obj.run()

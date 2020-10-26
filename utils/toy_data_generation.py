@@ -68,7 +68,9 @@ class checkerboard_grid():
         t = np.array([self.find_class(xi) for xi in x]) * self.tile_length
         t += np.random.choice(np.arange(0, self.num_tiles_length, step=2), size=n) * self.tile_length
         t += np.random.uniform(low=0, high=self.tile_length, size=n)
-        return (x, t)
+        return x, t
+
+
     def get_censoring(self,n):
         return np.random.exponential(1.5, size = n)
 
@@ -86,7 +88,7 @@ class varying_normals():
         t = np.zeros(shape=n)
         for i in range(n):
             t[i] = np.random.normal(loc=self.mean, scale=1. + self.var_slope * x[i])
-        return (x, t)
+        return x, t
 
     def get_censoring(self,n):
         return np.random.normal(loc=self.mean, scale=self.var_slope, size=n)
@@ -94,7 +96,6 @@ class varying_normals():
 def get_delta_and_z(t,c):
     d = np.int32(c > t)
     z = np.minimum(t, c)
-    #z = (z-z.mean())/z.std()
     return d,z
 
 
@@ -109,6 +110,8 @@ def generate_toy_data(variant,n,**kwargs):
     x,t = d.sample(n)
     c = d.get_censoring(n)
     d,z =get_delta_and_z(t,c)
+    x = (x - x.mean()) / x.std()
+    z = (z - z.mean()) / z.std()
     cols = ['x_1','delta','y']
     df = pd.DataFrame(np.stack([x,d,z],axis=1),columns=cols)
     data_path =f'../{variant}/'
@@ -117,7 +120,7 @@ def generate_toy_data(variant,n,**kwargs):
     df.to_csv(data_path+'data.csv',index=False)
 
 if __name__ == '__main__':
-    n=25000
+    n = 25000
     kwargs = {'a': 2.,'b':6.,'grid_width': 1., 'grid_length': 1., 'num_tiles_width': 4., 'num_tiles_length': 6.,'mean':100.,'var_slope':6.}
     for variant in ['weibull','checkboard','normal']:
         generate_toy_data(variant,n,**kwargs)

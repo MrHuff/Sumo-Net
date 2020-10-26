@@ -54,6 +54,7 @@ class hyperopt_training():
             'direct_dif':parameters_in['direct_dif'],
             'objective':parameters_in['objective']
         }
+        self.net_init_params = net_init_params
         self.eval_objective = self.get_eval_objective(self.eval_ob_string,parameters_in['objective'])
         self.train_objective = get_objective(parameters_in['objective'])
         self.model = survival_net(**net_init_params).to(self.device)
@@ -70,16 +71,19 @@ class hyperopt_training():
             X = X.to(self.device)
             y = y.to(self.device)
             delta = delta.to(self.device)
-            mask = delta==1
-            X_f = X[mask, :]
-            y_f = y[mask, :]
-            S = self.model.forward_cum(X,y,mask)
-            f = self.model(X_f,y_f)
-            loss = self.train_objective(S,f)
+            mask = delta == 1
+            if self.net_init_params['objective'] == 'survival':
+                S = self.model.forward_S(X[~mask, :], y[~mask, :])
+                f = self.model.forward_f(X[mask, :], y[mask, :])
+                loss = self.train_objective(S, f)
+            elif self.net_init_params['objective'] == 'hazard':
+                cumulative_hazard = self.model.forward_cum_hazard(X, y)
+                hazard = self.model.forward_hazard(X[mask, :], y[mask, :])
+                loss = self.train_objective(cumulative_hazard, hazard)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            total_loss_train+=loss.item()
+            total_loss_train += loss.item()
         return total_loss_train
 
     def eval_loop(self):
@@ -90,12 +94,16 @@ class hyperopt_training():
                 y = y.to(self.device)
                 delta = delta.to(self.device)
                 mask = delta == 1
-                X_f = X[mask, :]
-                y_f = y[mask, :]
-                S = self.model.forward_cum(X, y,mask)
-                f = self.model(X_f, y_f)
-                loss = self.eval_objective(S, f)
-                total+= loss
+
+                if self.net_init_params['objective'] == 'survival':
+                    S = self.model.forward_S(X[~mask, :], y[~mask, :])
+                    f = self.model.forward_f(X[mask, :], y[mask, :])
+                    loss = self.eval_objective(S, f)
+                elif self.net_init_params['objective'] == 'hazard':
+                    cumulative_hazard = self.model.forward_cum_hazard(X, y)
+                    hazard = self.model.forward_hazard(X[mask, :], y[mask, :])
+                    loss = self.eval_objective(cumulative_hazard, hazard)
+                total += loss
         return total.item()
 
     def validation_score(self):
@@ -108,6 +116,7 @@ class hyperopt_training():
 
     def dump_model(self):
         torch.save(self.model.state_dict(), self.save_path + f'best_model_{self.global_hyperit}.pt')
+
     def load_model(self):
         self.model.load_state_dict(torch.load(self.save_path + f'best_model_{self.global_hyperit}.pt'))
 

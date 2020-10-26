@@ -57,26 +57,26 @@ class survival_net(torch.nn.Module):
                  layers,
                  bounding_op=lambda x: x**2,
                  transformation=torch.tanh,
-                 direct_dif = True,
-                 objective = 'hazard'
+                 direct_dif=True,
+                 objective='hazard'
                  ):
         super(survival_net, self).__init__()
         self.init_covariate_net(d_in_x,layers_x,transformation)
         self.init_middle_net(dx_in=layers_x[-1],d_in_y=d_in_y,d_out=d_out,layers=layers,transformation=transformation,bounding_op=bounding_op)
         self.eps = 1e-5
         self.direct = direct_dif
-        self.objective  = objective
-        if self.objective in ['hazard','hazard_mean']:
-            self.f = self.forward_hazard
-            self.f_cum = self.forward_cum_hazard
-        elif self.objective in ['S','S_mean']:
-            self.f=self.forward_f
-            self.f_cum=self.forward_S
+        self.objective = objective
+        # if self.objective in ['hazard','hazard_mean']:
+        #     self.f = self.forward_hazard
+        #     self.f_cum = self.forward_cum_hazard
+        # elif self.objective in ['S','S_mean']:
+        #     self.f = self.forward_f
+        #     self.f_cum = self.forward_S
 
-    def init_covariate_net(self,d_in_x,layers_x,transformation):
-        module_list = [nn_node(d_in=d_in_x,d_out=layers_x[0],transformation=transformation)]
+    def init_covariate_net(self, d_in_x, layers_x, transformation):
+        module_list = [nn_node(d_in=d_in_x, d_out=layers_x[0], transformation=transformation)]
         for l_i in range(1,len(layers_x)):
-            module_list.append(nn_node(d_in=layers_x[l_i-1],d_out=layers_x[l_i],transformation=transformation))
+            module_list.append(nn_node(d_in=layers_x[l_i-1], d_out=layers_x[l_i], transformation=transformation))
         self.covariate_net = torch.nn.Sequential(*module_list)
 
     def init_middle_net(self,dx_in,d_in_y,d_out,layers,transformation,bounding_op):
@@ -87,18 +87,17 @@ class survival_net(torch.nn.Module):
         module_list.append(bounded_nn_layer(d_in=layers[-1], d_out=d_out, transformation=lambda x:x, bounding_op=bounding_op))
         self.middle_net = torch.nn.Sequential(*module_list)
 
-    def forward(self,x_cov,y):
-        return self.f(x_cov,y)
+    # def forward(self, x_cov, y):
+    #     return self.f(x_cov, y)
 
-    def forward_cum(self,x_cov,y,mask):
-        return self.f_cum(x_cov, y,mask)
+    # def forward_cum_hazard(self, x_cov, y, mask):
+    #     return self.f_cum(x_cov, y, mask)
 
-    def forward_S(self,x_cov,y,mask):
-        x_cov = x_cov[~mask,:]
-        y = y[~mask,:]
+    def forward_S(self,x_cov,y):
         x_cov = self.covariate_net(x_cov)
         h = self.middle_net(self.mixed_layer(x_cov, y))
-        return -log1plusexp(h)
+        S = 1 - h.sigmoid()
+        return S
 
     def forward_f(self,x_cov,y):
         x_cov = self.covariate_net(x_cov)
@@ -109,10 +108,10 @@ class survival_net(torch.nn.Module):
             F_forward = h_forward.sigmoid()
             f = ((F_forward - F) / self.eps)
         else:
-            f = ((h_forward - h) / self.eps)*F*(1-F) #(F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
+            f = ((h_forward - h) / self.eps) * F * (1-F)
         return f
 
-    def forward_cum_hazard(self, x_cov, y, mask):
+    def forward_cum_hazard(self, x_cov, y):
         x_cov = self.covariate_net(x_cov)
         h = self.middle_net(self.mixed_layer(x_cov, y))
         cum_hazard = torch.relu(h)
@@ -122,43 +121,43 @@ class survival_net(torch.nn.Module):
         x_cov = self.covariate_net(x_cov)
         h = self.middle_net(self.mixed_layer(x_cov, y))
         h_forward = self.middle_net(self.mixed_layer(x_cov, y + self.eps))
-        hazard = (torch.relu(h_forward) - torch.relu(h))/self.eps
+        hazard = (torch.relu(h_forward) - torch.relu(h)) / self.eps
         return hazard
 
-    def forward_S_eval(self,x_cov,y):
-        if self.objective in ['hazard','hazard_mean']:
-            S = torch.exp(-self.forward_cum_hazard(x_cov, y, []))
-            return S
-        elif self.objective in ['S','S_mean']:
-            x_cov = self.covariate_net(x_cov)
-            h = self.middle_net(self.mixed_layer(x_cov, y))
-            return 1-h.sigmoid_()
+    # def forward_S_eval(self,x_cov,y):
+    #     if self.objective == 'hazard':
+    #         S = torch.exp(-self.forward_cum_hazard(x_cov, y, []))
+    #         return S
+    #     elif self.objective in ['S','S_mean']:
+    #         x_cov = self.covariate_net(x_cov)
+    #         h = self.middle_net(self.mixed_layer(x_cov, y))
+    #         return 1-h.sigmoid_()
 
 def get_objective(objective):
     if objective == 'hazard':
-        return log_objective_hazard
-    if objective == 'hazard_mean':
-        return log_objective_hazard_mean
-    elif objective == 'S':
-        return log_objective
-    elif objective=='S_mean':
-        return log_objective_mean
+        return objective_hazard
+    # elif objective == 'hazard_mean':
+    #     return log_objective_hazard_mean
+    elif objective == 'survival':
+        return objective_survival
+    # elif objective == 'S_mean':
+    #     return log_objective_mean
 
-def log_objective(S,f):
-    return -(f+1e-6).log().sum()-S.sum()
+def objective_survival(S,f): #S should be of length num_censored, f of length num_observed.
+    return -(f+1e-6).log().sum() + S.sum()
 
-def log_objective_mean(S,f):
-    return -(f+1e-6).log().mean()-S.mean()
+# def log_objective_mean(S,f):
+#     return -(f+1e-6).log().mean()-S.mean()
 
-def log_objective_hazard(cum_hazard,hazard): #here cum_hazard should be a vector of
+def objective_hazard(cum_hazard,hazard): #here cum_hazard should be a vector of
     # length n, and hazard only needs to be computed for all individuals with
     # delta = 1 I'm not sure how to implement that best?
-    return -(  (hazard+1e-6).log().sum()-cum_hazard.sum() )
+    return - (hazard + 1e-6).log().sum() + cum_hazard.sum()
 
-def log_objective_hazard_mean(cum_hazard,hazard): #here cum_hazard should be a vector of
-    # length n, and hazard only needs to be computed for all individuals with
-    # delta = 1 I'm not sure how to implement that best?
-    return -(  (hazard+1e-6).log().mean()-cum_hazard.mean() )
+# def log_objective_hazard_mean(cum_hazard,hazard): #here cum_hazard should be a vector of
+#     # length n, and hazard only needs to be computed for all individuals with
+#     # delta = 1 I'm not sure how to implement that best?
+#     return -((hazard+1e-6).log().mean()-cum_hazard.mean())
 
 
 
