@@ -21,9 +21,9 @@ hyper_param_space = {
     'depth': [2],
     'width': [64],
     'bs': [250],
-    'lr': [1e-3],
+    'lr': [1e-5],
     'direct_dif':[False],
-    'objective':['hazard_mean']
+    'objective':['hazard_mean'] #S_mean
 
 }
 if __name__ == '__main__':

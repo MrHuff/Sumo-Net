@@ -27,13 +27,13 @@ class toy_data_class():
     def __init__(self,variant):
         self.load_path = f'./{variant}/'
         self.log_cols = ['x_1']
-        self.col_event = 'delta'
-        self.col_duration = 'y'
+        self.col_event = 'event'
+        self.col_duration = 'duration'
 
     def read_df(self):
         df = pd.read_csv(self.load_path+'data.csv')
-        print('covariate (X)', df['x_1'].max())
-        print('target (y)', df['y'].max())
+        print('covariate (X)', df[self.log_cols].max())
+        print('target (y)', df[self.col_duration].max())
         return df
 
 class weibull():  # a weibull distribution with scale set to 1
@@ -187,7 +187,7 @@ def generate_toy_data(variant,n,**kwargs):
     scatter_plot_2(variant,x,z,observed,censored)
     cum_f_plot(variant,(x_array-x_min)/(x_max-x_min),(t_array-t_min)/(t_max-t_min),dist,'after')
 
-    cols = ['x_1','delta','y']
+    cols = ['x_1','event','duration']
     df = pd.DataFrame(np.stack([x,d,z],axis=1),columns=cols)
     data_path =f'../{variant}/'
     if not os.path.exists(data_path):

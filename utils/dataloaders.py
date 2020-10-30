@@ -25,8 +25,8 @@ class surival_dataset(Dataset):
         elif str_identifier=='normal':
             data = toy_data_class(str_identifier)
 
-        self.delta_col = data.col_event
-        self.y_col = data.col_duration
+        self.event_col = data.col_event
+        self.duration_col = data.col_duration
         df_train = data.read_df()
         df_test = df_train.sample(frac=0.2,random_state=seed)
         df_train = df_train.drop(df_test.index)
@@ -40,9 +40,9 @@ class surival_dataset(Dataset):
 
     def split(self,df,mode='train'):
 
-        setattr(self,f'{mode}_delta',torch.from_numpy(df[self.delta_col].values).float())
-        setattr(self,f'{mode}_y',torch.from_numpy(df[self.y_col].values).unsqueeze(-1).float())
-        setattr(self, f'{mode}_X', torch.from_numpy(df.drop([self.delta_col,self.y_col],axis=1).values).float())
+        setattr(self,f'{mode}_delta', torch.from_numpy(df[self.event_col].values).float())
+        setattr(self,f'{mode}_y', torch.from_numpy(df[self.duration_col].values).unsqueeze(-1).float())
+        setattr(self, f'{mode}_X', torch.from_numpy(df.drop([self.event_col, self.duration_col], axis=1).values).float())
 
     def set(self,mode='train'):
         self.X = getattr(self,f'{mode}_X')
