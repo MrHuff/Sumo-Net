@@ -26,7 +26,7 @@ plt.rcParams['font.serif'] = "cm"
 class toy_data_class():
     def __init__(self,variant):
         self.load_path = f'./{variant}/'
-        self.log_cols = ['x_1']
+        self.log_cols = ['x1']
         self.col_event = 'event'
         self.col_duration = 'duration'
 
@@ -177,17 +177,17 @@ def generate_toy_data(variant,n,**kwargs):
     scatter_plot_1(variant,x,t,'pre')
     c = dist.get_censoring(n)
     d,z =get_delta_and_z(t,c)
-    z,z_min,z_max = max_min_scaling(z)
-    x,x_min,x_max = max_min_scaling(x)
-    t,t_min,t_max = max_min_scaling(t)
+    # z,z_min,z_max = max_min_scaling(z)
+    # x,x_min,x_max = max_min_scaling(x)
+    # t,t_min,t_max = max_min_scaling(t)
     empirical_cdf(variant,t,'after')
 
-    scatter_plot_1(variant,x,t,'after')
+    # scatter_plot_1(variant,x,t,'after')
     censored, observed = np.where(d == 0), np.where(d == 1)
     scatter_plot_2(variant,x,z,observed,censored)
-    cum_f_plot(variant,(x_array-x_min)/(x_max-x_min),(t_array-t_min)/(t_max-t_min),dist,'after')
+    # cum_f_plot(variant,(x_array-x_min)/(x_max-x_min),(t_array-t_min)/(t_max-t_min),dist,'after')
 
-    cols = ['x_1','event','duration']
+    cols = ['x1','event','duration']
     df = pd.DataFrame(np.stack([x,d,z],axis=1),columns=cols)
     data_path =f'../{variant}/'
     if not os.path.exists(data_path):

@@ -1,4 +1,4 @@
-from hyperopt import hp,tpe,Trials,fmin,space_eval,STATUS_OK,STATUS_FAIL
+from hyperopt import hp,tpe,Trials,fmin,space_eval,STATUS_OK,STATUS_FAIL,rand
 from nets.nets import *
 from utils.dataloaders import get_dataloader
 import torch
@@ -25,7 +25,7 @@ class hyperopt_training():
         self.save_path = f'./{self.dataset_string}_{self.seed}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','objective']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','objective','dropout']
         self.get_hyperparameterspace(hyper_param_space)
 
     def get_eval_objective(self,str,obj):
@@ -45,6 +45,7 @@ class hyperopt_training():
         self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed)
         net_init_params = {
             'd_in_x' : self.dataloader.dataset.X.shape[1],
+            'cat_size_list': self.dataloader.dataset.unique_cat_cols,
             'd_in_y' : self.dataloader.dataset.y.shape[1],
             'd_out' : self.d_out,
             'bounding_op':parameters_in['bounding_op'],
@@ -52,7 +53,8 @@ class hyperopt_training():
             'layers_x': [parameters_in['width_x']]*parameters_in['depth_x'],
             'layers': [parameters_in['width']]*parameters_in['depth'],
             'direct_dif':parameters_in['direct_dif'],
-            'objective':parameters_in['objective']
+            'objective':parameters_in['objective'],
+            'dropout':parameters_in['dropout']
         }
         self.eval_objective = self.get_eval_objective(self.eval_ob_string,parameters_in['objective'])
         self.train_objective = get_objective(parameters_in['objective'])
@@ -66,7 +68,7 @@ class hyperopt_training():
     def training_loop(self):
         self.dataloader.dataset.set(mode='train')
         total_loss_train=0
-        for i,(X,y,delta) in enumerate(self.dataloader):
+        for i,(X,x_cat,y,delta) in enumerate(self.dataloader):
             X = X.to(self.device)
             y = y.to(self.device)
             delta = delta.to(self.device)
@@ -138,7 +140,7 @@ class hyperopt_training():
         trials = Trials()
         best = fmin(fn=self,
                     space=self.hyperparameter_space,
-                    algo=tpe.suggest,
+                    algo=rand.suggest,
                     max_evals=self.hyperits,
                     trials=trials,
                     verbose=1)
