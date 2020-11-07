@@ -15,6 +15,15 @@ class Log1PlusExp(torch.autograd.Function):
         y = (-x).exp().half() if x.type()=='torch.cuda.HalfTensor' else (-x).exp()
         return grad_output / (1 + y)
 
+class multi_input_Sequential(torch.nn.Sequential):
+    def forward(self, inputs):
+        for module in self._modules.values():
+            if type(inputs) == tuple:
+                inputs = module(*inputs)
+            else:
+                inputs = module(inputs)
+        return inputs
+
 log1plusexp = Log1PlusExp.apply
 class nn_node(torch.nn.Module): #Add dropout layers, Do embedding layer as well!
     def __init__(self,d_in,d_out,cat_size_list,dropout=0.9,transformation=torch.tanh):
@@ -29,35 +38,34 @@ class nn_node(torch.nn.Module): #Add dropout layers, Do embedding layer as well!
         self.f = transformation
         self.dropout = torch.nn.Dropout(dropout)
     def forward(self,X,x_cat=[]):
-        if self.has_cat:
+        if not isinstance(x_cat,list):
             seq = torch.unbind(x_cat,1)
             for i,f in enumerate(seq):
-                X = torch.cat([X,getattr(self,f'embedding_{i}')(f)],dim=1)
+                o = getattr(self,f'embedding_{i}')(f)
+                X = torch.cat([X,o],dim=1)
         return self.dropout(self.f(self.w(X)))
 
 class bounded_nn_layer(torch.nn.Module): #Add dropout layers
-    def __init__(self,d_in,d_out,dropout=0.9 ,bounding_op=lambda x: x**2,transformation=torch.tanh):
+    def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
         super(bounded_nn_layer, self).__init__()
         self.W = torch.nn.Parameter(torch.randn(*(d_in,d_out)),requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
         self.bias = torch.nn.Parameter(torch.randn(d_out),requires_grad=True)
-        self.dropout = torch.nn.Dropout(dropout)
     def forward(self,X):
-        return self.dropout(self.f(X@self.bounding_op(self.W)+self.bias))
+        return self.f(X@self.bounding_op(self.W)+self.bias)
 
 class mixed_layer(torch.nn.Module): #Add dropout layers
-    def __init__(self,d_in,d_in_bounded,d_out,dropout=0.9, bounding_op=lambda x: x**2,transformation=torch.tanh):
+    def __init__(self, d_in, d_in_bounded, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
         super(mixed_layer, self).__init__()
         self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out)), requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
         self.bias = torch.nn.Parameter(torch.randn(d_out), requires_grad=True)
         self.w = torch.nn.Linear(d_in,d_out)
-        self.dropout = torch.nn.Dropout(dropout)
 
     def forward(self,X,x_bounded):
-        return self.dropout(self.f(x_bounded @ self.bounding_op(self.pos_weights) + self.bias + self.w(X)))
+        return self.f(x_bounded @ self.bounding_op(self.pos_weights) + self.bias + self.w(X))
 
 
 class survival_net(torch.nn.Module):
@@ -76,7 +84,8 @@ class survival_net(torch.nn.Module):
                  ):
         super(survival_net, self).__init__()
         self.init_covariate_net(d_in_x,layers_x,cat_size_list,transformation,dropout)
-        self.init_middle_net(dx_in=layers_x[-1],d_in_y=d_in_y,d_out=d_out,layers=layers,transformation=transformation,bounding_op=bounding_op,dropout=dropout)
+        self.init_middle_net(dx_in=layers_x[-1], d_in_y=d_in_y, d_out=d_out, layers=layers,
+                             transformation=transformation, bounding_op=bounding_op)
         self.eps = 1e-5
         self.direct = direct_dif
         self.objective  = objective
@@ -91,34 +100,39 @@ class survival_net(torch.nn.Module):
         module_list = [nn_node(d_in=d_in_x,d_out=layers_x[0],cat_size_list=cat_size_list,transformation=transformation,dropout=dropout)]
         for l_i in range(1,len(layers_x)):
             module_list.append(nn_node(d_in=layers_x[l_i-1],d_out=layers_x[l_i],cat_size_list=[],transformation=transformation,dropout=dropout))
-        self.covariate_net = torch.nn.Sequential(*module_list)
+        self.covariate_net = multi_input_Sequential(*module_list)
 
-    def init_middle_net(self,dx_in,d_in_y,d_out,layers,transformation,bounding_op,dropout):
-        self.mixed_layer = mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], transformation=transformation, bounding_op=bounding_op,dropout=dropout)
-        module_list = []
+    def init_middle_net(self, dx_in, d_in_y, d_out, layers, transformation, bounding_op):
+        # self.mixed_layer = mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], transformation=transformation, bounding_op=bounding_op,dropout=dropout)
+        module_list = [mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], bounding_op=bounding_op,
+                                   transformation=transformation)]
         for l_i in range(1,len(layers)):
-            module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], transformation=transformation, bounding_op=bounding_op,dropout=dropout))
-        module_list.append(bounded_nn_layer(d_in=layers[-1], d_out=d_out, transformation=lambda x:x, bounding_op=bounding_op,dropout=dropout))
-        self.middle_net = torch.nn.Sequential(*module_list)
+            module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
+                                                transformation=transformation))
+        module_list.append(
+            bounded_nn_layer(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
+        self.middle_net = multi_input_Sequential(*module_list)
 
     def forward(self,x_cov,y,x_cat=[]):
-        return self.f(x_cov,y)
+        return self.f(x_cov,y,x_cat)
 
     def forward_cum(self,x_cov,y,mask,x_cat=[]):
-        return self.f_cum(x_cov, y,mask)
+        return self.f_cum(x_cov, y,mask,x_cat)
 
     def forward_S(self,x_cov,y,mask,x_cat=[]):
         x_cov = x_cov[~mask,:]
         y = y[~mask,:]
+        if not isinstance(x_cat,list):
+            x_cat=x_cat[~mask,:]
         #Fix categorical business
-        x_cov = self.covariate_net(x_cov)
-        h = self.middle_net(self.mixed_layer(x_cov, y))
+        x_cov = self.covariate_net((x_cov,x_cat))
+        h = self.middle_net((x_cov, y))
         return -log1plusexp(h)
 
     def forward_f(self,x_cov,y,x_cat=[]):
-        x_cov = self.covariate_net(x_cov,x_cat)
-        h = self.middle_net(self.mixed_layer(x_cov, y))
-        h_forward = self.middle_net(self.mixed_layer(x_cov, y + self.eps))
+        x_cov = self.covariate_net((x_cov,x_cat))
+        h = self.middle_net((x_cov, y))
+        h_forward = self.middle_net((x_cov, y + self.eps))
         F = h.sigmoid()
         if self.direct:
             F_forward = h_forward.sigmoid()
@@ -129,28 +143,26 @@ class survival_net(torch.nn.Module):
 
     def forward_cum_hazard(self, x_cov, y, mask):
         x_cov = self.covariate_net(x_cov)
-        h = self.middle_net(self.mixed_layer(x_cov, y))
+        h = self.middle_net((x_cov, y))
         return h**2 #log1plusexp(h)
 
     def forward_hazard(self, x_cov, y):
         x_cov = self.covariate_net(x_cov)
-        h = self.middle_net(self.mixed_layer(x_cov, y))
-        h_forward = self.middle_net(self.mixed_layer(x_cov, y + self.eps))
+        h = self.middle_net((x_cov, y))
+        h_forward = self.middle_net((x_cov, y + self.eps))
         if self.direct:
             hazard = (log1plusexp(h_forward) - log1plusexp(h))/self.eps
-            # hazard = (torch.exp(10*torch.tanh(h_forward/10.)) - torch.exp(10*torch.tanh(h/10)))/self.eps
         else:
-            # hazard = ((h_forward-h)/self.eps) * torch.sigmoid(h) #*torch.exp(h) #
             hazard = torch.relu(((h_forward-h)/self.eps) * 2*h) #*torch.exp(h) #
         return hazard
 
-    def forward_S_eval(self,x_cov,y):
+    def forward_S_eval(self,x_cov,y,x_cat=[]):
         if self.objective in ['hazard','hazard_mean']:
             S = torch.exp(-self.forward_cum_hazard(x_cov, y, []))
             return S
         elif self.objective in ['S','S_mean']:
-            x_cov = self.covariate_net(x_cov)
-            h = self.middle_net(self.mixed_layer(x_cov, y))
+            x_cov = self.covariate_net((x_cov,x_cat))
+            h = self.middle_net((x_cov, y))
             return 1-h.sigmoid_()
 
 def get_objective(objective):

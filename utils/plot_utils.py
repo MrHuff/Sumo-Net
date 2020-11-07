@@ -30,13 +30,14 @@ def load_best_model(dataset_string,seed):
     model.load_state_dict(torch.load(PATH+f'best_model_{best_tid}.pt'))
     return model
 
-def plot_survival(fixed_X,model,max_time,plt_name,points=100,begin=0):
-    grid = torch.from_numpy(np.linspace(begin,max_time,points)).float().unsqueeze(-1)
+def plot_survival(fixed_X,model,max_time,plt_name,dl,points=100,begin=0,):
+    grid = torch.from_numpy( dl.dataset.transform_duration(np.linspace(begin, max_time,points).reshape(-1, 1)) ).float()
+    x_in = torch.from_numpy(dl.dataset.transform_x(fixed_X)).float()
     for i in range(fixed_X.shape[0]):
         with torch.no_grad():
-            S=model.forward_S_eval(fixed_X[i,:].unsqueeze(-1).repeat(points,1),grid)
+            S=model.forward_S_eval(x_in[i,:].unsqueeze(-1).repeat(points,1),grid)
             S = S.numpy()
-        plt.plot(grid.numpy(), S)
+        plt.plot( dl.dataset.invert_duration(grid.numpy()), S)
     plt.savefig(plt_name)
     plt.clf()
 

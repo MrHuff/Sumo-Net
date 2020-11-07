@@ -57,7 +57,7 @@ class surival_dataset(Dataset):
             binary_cols = []
             cat_cols = []
         df_train = data.read_df()
-
+        df_train = df_train.dropna()
         if str_identifier=='kkbox':
             c = OrderedCategoricalLong(min_per_category=1,return_series=True)
             self.event_col = 'event'
@@ -69,15 +69,15 @@ class surival_dataset(Dataset):
             self.event_col = data.col_event
             self.duration_col = data.col_duration
 
-        leave = binary_cols + cat_cols
         standardize = [([col], MinMaxScaler()) for col in cont_cols]
-        leave = [(col, None) for col in leave]
+        leave = [(col, None) for col in binary_cols]
+
         self.cat_cols = cat_cols
 
-        self.x_mapper = DataFrameMapper(standardize + leave)
+        self.x_mapper = DataFrameMapper(standardize+leave)
         self.duration_mapper = MinMaxScaler()
         if self.cat_cols:
-            self.unique_cat_cols = df_train[cat_cols].unique().values().tolist()
+            self.unique_cat_cols = df_train[cat_cols].nunique().tolist()
         else:
             self.unique_cat_cols = []
 
@@ -86,13 +86,13 @@ class surival_dataset(Dataset):
         df_val = df_train.sample(frac=0.25,random_state=seed)
         df_train = df_train.drop(df_val.index)
 
-        x_train = self.x_mapper.fit_transform(df_train)
-        x_val = self.x_mapper.transform(df_val)
-        x_test = self.x_mapper.transform(df_test)
+        x_train = self.x_mapper.fit_transform(df_train[cont_cols+binary_cols]).astype('float32')
+        x_val = self.x_mapper.transform(df_val[cont_cols+binary_cols]).astype('float32')
+        x_test = self.x_mapper.transform(df_test[cont_cols+binary_cols]).astype('float32')
 
-        y_train = self.duration_mapper.fit_transform(df_train[self.duration_col].values.reshape(-1,1))
-        y_val = self.duration_mapper.transform(df_val[self.duration_col].values.reshape(-1,1))
-        y_test = self.duration_mapper.transform(df_test[self.duration_col].values.reshape(-1,1))
+        y_train = self.duration_mapper.fit_transform(df_train[self.duration_col].values.reshape(-1,1)).astype('float32')
+        y_val = self.duration_mapper.transform(df_val[self.duration_col].values.reshape(-1,1)).astype('float32')
+        y_test = self.duration_mapper.transform(df_test[self.duration_col].values.reshape(-1,1)).astype('float32')
         self.split(X=x_train,delta=df_train[self.event_col],y=y_train,mode='train',cat=cat_cols,df=df_train)
         self.split(X=x_val,delta=df_val[self.event_col],y=y_val,mode='val',cat=cat_cols,df=df_val)
         self.split(X=x_test,delta=df_test[self.event_col],y=y_test,mode='test',cat=cat_cols,df=df_test)
@@ -100,11 +100,11 @@ class surival_dataset(Dataset):
 
     def split(self,X,delta,y,cat=[],mode='train',df=[]):
 
-        setattr(self,f'{mode}_delta', torch.from_numpy(delta.values).float())
+        setattr(self,f'{mode}_delta', torch.from_numpy(delta.astype('float32').values).float())
         setattr(self,f'{mode}_y', torch.from_numpy(y).float())
         setattr(self, f'{mode}_X', torch.from_numpy(X).float())
         if self.cat_cols:
-            setattr(self, f'{mode}_cat_X', torch.from_numpy(df[cat].values).long())
+            setattr(self, f'{mode}_cat_X', torch.from_numpy(df[cat].astype('int64').values).long())
 
     def set(self,mode='train'):
         self.X = getattr(self,f'{mode}_X')
@@ -113,13 +113,16 @@ class surival_dataset(Dataset):
         if self.cat_cols:
             self.cat_X = getattr(self,f'{mode}_cat_X')
         else:
-            self.cat_X = 0
+            self.cat_X = []
 
     def transform_x(self,x):
         return self.x_mapper.transform(x)
 
     def invert_duration(self,duration):
         return self.duration_mapper.inverse_transform(duration)
+
+    def transform_duration(self,duration):
+        return self.duration_mapper.transform(duration)
 
     def __getitem__(self, index):
         if self.cat_cols:

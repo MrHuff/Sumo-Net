@@ -68,6 +68,7 @@ class hyperopt_training():
     def training_loop(self):
         self.dataloader.dataset.set(mode='train')
         total_loss_train=0
+        self.model = self.model.train()
         for i,(X,x_cat,y,delta) in enumerate(self.dataloader):
             X = X.to(self.device)
             y = y.to(self.device)
@@ -75,27 +76,38 @@ class hyperopt_training():
             mask = delta==1
             X_f = X[mask, :]
             y_f = y[mask, :]
-            S = self.model.forward_cum(X,y,mask)
-            f = self.model(X_f,y_f)
+            if not isinstance(x_cat,list): #F
+                x_cat = x_cat.to(self.device)
+                x_cat_f = x_cat[mask,:]
+            else:
+                x_cat_f = []
+            S = self.model.forward_cum(X,y,mask,x_cat)
+            f = self.model(X_f,y_f,x_cat_f)
             loss = self.train_objective(S,f)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            total_loss_train+=loss.item()
-        return total_loss_train
+            total_loss_train+=loss.detach()
+        return total_loss_train.item()
 
     def eval_loop(self):
         total = 0
+        self.model = self.model.eval()
         with torch.no_grad():
-            for i,(X,y,delta) in enumerate(self.dataloader):
+            for i,(X,x_cat,y,delta) in enumerate(self.dataloader):
                 X = X.to(self.device)
                 y = y.to(self.device)
                 delta = delta.to(self.device)
                 mask = delta == 1
                 X_f = X[mask, :]
                 y_f = y[mask, :]
-                S = self.model.forward_cum(X, y,mask)
-                f = self.model(X_f, y_f)
+                if not isinstance(x_cat, list):
+                    x_cat = x_cat.to(self.device)
+                    x_cat_f = x_cat[mask, :]
+                else:
+                    x_cat_f = []
+                S = self.model.forward_cum(X, y,mask,x_cat)
+                f = self.model(X_f, y_f,x_cat_f)
                 loss = self.eval_objective(S, f)
                 total+= loss
         return total.item()
@@ -110,6 +122,7 @@ class hyperopt_training():
 
     def dump_model(self):
         torch.save(self.model.state_dict(), self.save_path + f'best_model_{self.global_hyperit}.pt')
+
     def load_model(self):
         self.model.load_state_dict(torch.load(self.save_path + f'best_model_{self.global_hyperit}.pt'))
 
