@@ -32,8 +32,9 @@ class nn_node(torch.nn.Module): #Add dropout layers, Do embedding layer as well!
         self.has_cat = len(cat_size_list)>0
         self.latent_col_list = []
         for i,el in enumerate(cat_size_list):
-            setattr(self,f'embedding_{i}',torch.nn.Embedding(el,el//2))
-            self.latent_col_list.append(el//2)
+            col_size = el//2+1
+            setattr(self,f'embedding_{i}',torch.nn.Embedding(el,col_size))
+            self.latent_col_list.append(col_size)
         self.w = torch.nn.Linear(d_in+sum(self.latent_col_list),d_out)
         self.f = transformation
         self.dropout = torch.nn.Dropout(dropout)

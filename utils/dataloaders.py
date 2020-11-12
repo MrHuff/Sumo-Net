@@ -1,10 +1,14 @@
 from pycox.datasets import kkbox,support,metabric,gbsg,flchain
-from pycox.preprocessing.feature_transforms import OrderedCategoricalLong
 from torch.utils.data.dataset import Dataset
 from torch.utils.data.dataloader import DataLoader
+from pycox.preprocessing.feature_transforms import *
 import torch
 from .toy_data_generation import toy_data_class
 from sklearn.preprocessing import MinMaxScaler,StandardScaler
+
+
+
+
 from sklearn_pandas import DataFrameMapper
 import pandas as pd
 pd.set_option('display.max_rows', 500)
@@ -57,27 +61,28 @@ class surival_dataset(Dataset):
             binary_cols = []
             cat_cols = []
         df_train = data.read_df()
-        df_train = df_train.dropna()
+
         if str_identifier=='kkbox':
-            c = OrderedCategoricalLong(min_per_category=1,return_series=True)
             self.event_col = 'event'
             self.duration_col = 'duration'
             df_train = df_train.drop(['msno'],axis=1)
-            df_train['gender'] = c.fit_transform(df_train['gender'])
-
         else:
             self.event_col = data.col_event
             self.duration_col = data.col_duration
-
+        c = OrderedCategoricalLong()
+        for el in cat_cols:
+            df_train[el] = c.fit_transform(df_train[el])
         standardize = [([col], MinMaxScaler()) for col in cont_cols]
         leave = [(col, None) for col in binary_cols]
-
         self.cat_cols = cat_cols
-
         self.x_mapper = DataFrameMapper(standardize+leave)
         self.duration_mapper = MinMaxScaler()
         if self.cat_cols:
-            self.unique_cat_cols = df_train[cat_cols].nunique().tolist()
+            self.unique_cat_cols = df_train[cat_cols].max(axis=0).tolist()
+            self.unique_cat_cols = [el+1 for el in self.unique_cat_cols]
+            for el in cat_cols:
+                print(f'column {el}:', df_train[el].unique().tolist())
+            print(self.unique_cat_cols)
         else:
             self.unique_cat_cols = []
 
