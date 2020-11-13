@@ -4,7 +4,9 @@ from utils.dataloaders import get_dataloader
 import torch
 import os
 import pickle
-
+import numpy as np
+from pycox.evaluation import EvalSurv
+import pandas as pd
 def square(x):
     return x**2
 
@@ -16,9 +18,11 @@ class hyperopt_training():
         self.seed = job_param['seed']
         self.total_epochs = job_param['total_epochs']
         self.device = job_param['device']
-        self.global_loss_init = job_param['global_loss_init']
         self.patience = job_param['patience']
         self.hyperits = job_param['hyperits']
+        self.selection_criteria = job_param['selection_criteria']
+        self.grid_size  = job_param['grid_size']
+
         self.validation_interval = 2
         self.global_hyperit = 0
         torch.cuda.set_device(self.device)
@@ -28,12 +32,13 @@ class hyperopt_training():
         self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','objective','dropout']
         self.get_hyperparameterspace(hyper_param_space)
 
-    def get_eval_objective(self,str,obj):
-        if str=='train':
-            return get_objective(obj)
-        elif str=='c_score':
-            pass #Stuff that compares with other stuff. Toy experiments for sanity check! Plot survival curve for different covariates and "true survival curve"
-
+    def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
+        val_likelihood = self.train_objective(S,f)
+        eval_obj = EvalSurv(surv=S_extended,durations=durations,events=events,censor_surv='km') #Add index and pass as DF
+        conc = eval_obj.concordance_td()
+        ibs = eval_obj.integrated_brier_score(time_grid)
+        inll = eval_obj.integrated_nbll(time_grid)
+        return val_likelihood,conc,ibs,inll
     def get_hyperparameterspace(self,hyper_param_space):
         self.hyperparameter_space = {}
         for string in self.hyperopt_params:
@@ -56,7 +61,6 @@ class hyperopt_training():
             'objective':parameters_in['objective'],
             'dropout':parameters_in['dropout']
         }
-        self.eval_objective = self.get_eval_objective(self.eval_ob_string,parameters_in['objective'])
         self.train_objective = get_objective(parameters_in['objective'])
         self.model = survival_net(**net_init_params).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'])
@@ -91,8 +95,14 @@ class hyperopt_training():
         return total_loss_train.item()
 
     def eval_loop(self):
-        total = 0
+        S_series_container = []
+        S_log = []
+        f_log = []
         self.model = self.model.eval()
+        t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration, self.grid_size)
+        time_grid = torch.from_numpy(t_grid_np).float().to(self.device).unsqueeze(-1)
+        durations  = self.dataloader.dataset.y.squeeze().numpy()
+        events  = self.dataloader.dataset.delta.numpy()
         with torch.no_grad():
             for i,(X,x_cat,y,delta) in enumerate(self.dataloader):
                 X = X.to(self.device)
@@ -101,16 +111,27 @@ class hyperopt_training():
                 mask = delta == 1
                 X_f = X[mask, :]
                 y_f = y[mask, :]
+                X_repeat = X.repeat_interleave(self.grid_size,0)
                 if not isinstance(x_cat, list):
                     x_cat = x_cat.to(self.device)
                     x_cat_f = x_cat[mask, :]
+                    x_cat_repeat = x_cat.repeat_interleave(self.grid_size,0)
                 else:
                     x_cat_f = []
+                    x_cat_repeat = []
                 S = self.model.forward_cum(X, y,mask,x_cat)
                 f = self.model(X_f, y_f,x_cat_f)
-                loss = self.eval_objective(S, f)
-                total+= loss
-        return total.item()
+                input_time = time_grid.repeat((X.shape[0],1))
+                S_serie =self.model.forward_S_eval(X_repeat,input_time,x_cat_repeat)#Fix
+                S_series_container.append(S_serie.view(-1,self.grid_size).t())
+                S_log.append(S)
+                f_log.append(f)
+
+            S_log = torch.cat(S_log)
+            f_log = torch.cat(f_log)
+            S_series_container = pd.DataFrame(torch.cat(S_series_container,1).cpu().numpy())
+            val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
+        return val_likelihood.item(),conc,ibs,inll
 
     def validation_score(self):
         self.dataloader.dataset.set(mode='val')
@@ -128,14 +149,22 @@ class hyperopt_training():
 
     def full_loop(self):
         counter = 0
-        best = self.global_loss_init
+        best = np.inf
         for i in range(self.total_epochs):
             print(f'Epoch {i} training loss: ',self.training_loop())
             if i%self.validation_interval==0:
-                val_loss = self.validation_score()
-                if val_loss<best:
-                    best = val_loss
-                    print('new best val score: ',best,)
+                val_likelihood,conc,ibs,inll = self.validation_score()
+                if self.selection_criteria == 'train':
+                    criteria = val_likelihood #minimize #
+                elif self.selection_criteria == 'concordance':
+                    criteria = -conc #maximize
+                elif self.selection_criteria == 'ibs':
+                    criteria = ibs #minimize
+                elif self.selection_criteria == 'inll':
+                    criteria = inll #maximize
+                if criteria<best:
+                    best = val_likelihood
+                    print('new best val score: ',best)
                     print('Dumping model')
                     self.dump_model()
                 else:
@@ -143,10 +172,30 @@ class hyperopt_training():
             if counter > self.patience:
                 break
         self.load_model()
-        val_loss = self.validation_score()
-        test_loss = self.test_score()
+        val_likelihood,val_conc,val_ibs,val_inll = self.validation_score()
+        test_likelihood,test_conc,test_ibs,test_inll = self.test_score()
 
-        return {'loss': val_loss, 'status': STATUS_OK, 'test_loss': test_loss}
+        if self.selection_criteria == 'train':
+            criteria = val_likelihood
+            criteria_test = test_likelihood
+        elif self.selection_criteria == 'concordance':
+            criteria = -val_conc
+            criteria_test = test_conc
+        elif self.selection_criteria == 'ibs':
+            criteria = val_ibs
+            criteria_test = test_ibs
+        elif self.selection_criteria == 'inll':
+            criteria = val_inll
+            criteria_test = test_inll
+
+        return {'loss': criteria,
+                'status': STATUS_OK,
+                'test_loss': criteria_test,
+                'test_loglikelihood':test_likelihood,
+                 'test_conc':test_conc,
+                 'test_ibs':test_ibs,
+                 'test_inll':test_inll,
+                }
 
 
     def run(self):

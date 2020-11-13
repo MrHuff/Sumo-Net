@@ -77,6 +77,7 @@ class surival_dataset(Dataset):
         self.cat_cols = cat_cols
         self.x_mapper = DataFrameMapper(standardize+leave)
         self.duration_mapper = MinMaxScaler()
+
         if self.cat_cols:
             self.unique_cat_cols = df_train[cat_cols].max(axis=0).tolist()
             self.unique_cat_cols = [el+1 for el in self.unique_cat_cols]
@@ -119,6 +120,8 @@ class surival_dataset(Dataset):
             self.cat_X = getattr(self,f'{mode}_cat_X')
         else:
             self.cat_X = []
+        self.min_duration = self.y.min().numpy()
+        self.max_duration = self.y.max().numpy()
 
     def transform_x(self,x):
         return self.x_mapper.transform(x)

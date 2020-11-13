@@ -6,24 +6,24 @@ import torchtuples as tt
 import torch
 from pycox.models import CoxTime
 from pycox.models.cox_time import MLPVanillaCoxTime
-
+from pycox.evaluation import EvalSurv
 from utils.dataloaders import toy_data_class
 
 
 if __name__ == '__main__':
 
-    for toy_dat in [5,6,7]:
+    for toy_dat in [6]:
         net = MLPVanillaCoxTime(in_features=1,num_nodes=[64,64,64,64],batch_norm=True,dropout=0.1)
         if toy_dat==5:
             test_X = torch.Tensor([[0], [0.3], [1.0]]).cuda()
             str_name = 'weibull'
         if toy_dat==6:
-            test_X = torch.Tensor([[0.1],[0.4]]).cuda()
+            test_X = torch.Tensor([[0.1],[0.2],[0.4],[0.6],[0.8],[1.0]]).cuda()
             str_name = 'checkboard'
         if toy_dat==7:
             test_X = torch.Tensor([[0.0],[0.2],[0.4],[0.6],[0.8],[1.0]]).cuda()
             str_name = 'normal'
-        cols_leave = ['x_1']
+        cols_leave = ['x1']
         leave = [(col, None) for col in cols_leave]
 
         x_mapper = DataFrameMapper(leave)
@@ -36,6 +36,7 @@ if __name__ == '__main__':
         x_train = x_mapper.fit_transform(df_train).astype('float32')
         x_val = x_mapper.transform(df_val).astype('float32')
         x_test = x_mapper.transform(df_test).astype('float32')
+
 
 
         labtrans = CoxTime.label_transform()
@@ -54,13 +55,20 @@ if __name__ == '__main__':
         log = model.fit(x_train, y_train, batch_size, epochs, callbacks, verbose,
                         val_data=val.repeat(10).cat())
         _ = model.compute_baseline_hazards()
-        surv = model.predict_surv_df(test_X)
+        surv = model.predict_surv_df(input = test_X,batch_size=5000) #negerballe, passing wrong data... pass real test data...
         print(surv)
-
         surv.iloc[:, :test_X.shape[0]].plot()
         plt.ylabel('S(t | x)')
         _ = plt.xlabel('Time')
         plt.savefig(f'./cox_time_survival_plot_dataset_{toy_dat}.png')
+        eval_obj = EvalSurv(surv=surv,durations=durations_test[:6],events=events_test[:6],censor_surv='km')
+        print(eval_obj.concordance_td())
+        time_grid = np.linspace(durations_test.min(), durations_test.max(), 100)
+        eval_obj.brier_score(time_grid)
+        print(eval_obj.integrated_brier_score(time_grid))
+        eval_obj.nbll(time_grid).plot()
+        print(eval_obj.integrated_nbll(time_grid))
+
 
 
 

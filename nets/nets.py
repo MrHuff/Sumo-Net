@@ -166,6 +166,8 @@ class survival_net(torch.nn.Module):
             h = self.middle_net((x_cov, y))
             return 1-h.sigmoid_()
 
+
+
 def get_objective(objective):
     if objective == 'hazard':
         return log_objective_hazard
