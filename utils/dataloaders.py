@@ -5,10 +5,6 @@ from pycox.preprocessing.feature_transforms import *
 import torch
 from .toy_data_generation import toy_data_class
 from sklearn.preprocessing import MinMaxScaler,StandardScaler
-
-
-
-
 from sklearn_pandas import DataFrameMapper
 import pandas as pd
 pd.set_option('display.max_rows', 500)

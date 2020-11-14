@@ -22,8 +22,7 @@ class hyperopt_training():
         self.hyperits = job_param['hyperits']
         self.selection_criteria = job_param['selection_criteria']
         self.grid_size  = job_param['grid_size']
-
-        self.validation_interval = 2
+        self.validation_interval = job_param['validation_interval']
         self.global_hyperit = 0
         torch.cuda.set_device(self.device)
         self.save_path = f'./{self.dataset_string}_{self.seed}/'
@@ -154,15 +153,15 @@ class hyperopt_training():
             print(f'Epoch {i} training loss: ',self.training_loop())
             if i%self.validation_interval==0:
                 val_likelihood,conc,ibs,inll = self.validation_score()
-                if self.selection_criteria == 'train':
-                    criteria = val_likelihood #minimize #
-                elif self.selection_criteria == 'concordance':
-                    criteria = -conc #maximize
-                elif self.selection_criteria == 'ibs':
-                    criteria = ibs #minimize
-                elif self.selection_criteria == 'inll':
-                    criteria = inll #maximize
                 if criteria<best:
+                    if self.selection_criteria == 'train':
+                        criteria = val_likelihood #minimize #
+                    elif self.selection_criteria == 'concordance':
+                        criteria = -conc #maximize
+                    elif self.selection_criteria == 'ibs':
+                        criteria = ibs #minimize
+                    elif self.selection_criteria == 'inll':
+                        criteria = inll #maximize
                     best = val_likelihood
                     print('new best val score: ',best)
                     print('Dumping model')
