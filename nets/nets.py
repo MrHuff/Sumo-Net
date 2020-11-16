@@ -121,7 +121,14 @@ class survival_net(torch.nn.Module):
         x_cov = self.covariate_net(x_cov)
         h = self.middle_net(self.mixed_layer(x_cov, y))
         h_forward = self.middle_net(self.mixed_layer(x_cov, y + self.eps))
+<<<<<<< Updated upstream
         hazard = (torch.relu(h_forward) - torch.relu(h)) / self.eps
+=======
+        if self.direct:
+            hazard = ((h_forward-h)/self.eps)*2*h #hazard = (log1plusexp(h_forward) - log1plusexp(h))/self.eps
+        else:
+            hazard = ((h_forward-h)/self.eps)*h.sigmoid()
+>>>>>>> Stashed changes
         return hazard
 
     # def forward_S_eval(self,x_cov,y):
@@ -152,12 +159,17 @@ def objective_survival(S,f): #S should be of length num_censored, f of length nu
 def objective_hazard(cum_hazard,hazard): #here cum_hazard should be a vector of
     # length n, and hazard only needs to be computed for all individuals with
     # delta = 1 I'm not sure how to implement that best?
+<<<<<<< Updated upstream
     return - (hazard + 1e-6).log().sum() + cum_hazard.sum()
 
 # def log_objective_hazard_mean(cum_hazard,hazard): #here cum_hazard should be a vector of
 #     # length n, and hazard only needs to be computed for all individuals with
 #     # delta = 1 I'm not sure how to implement that best?
 #     return -((hazard+1e-6).log().mean()-cum_hazard.mean())
+=======
+    n = cum_hazard.shape[0]
+    return -(  (hazard+1e-6).log().sum()-cum_hazard.sum() )/n
+>>>>>>> Stashed changes
 
 
 

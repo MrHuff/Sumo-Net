@@ -16,6 +16,7 @@ datasets = ['support',
 hyper_param_space = {
     # torch.nn.functional.elu,torch.nn.functional.relu,
     'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
+<<<<<<< Updated upstream
     'transformation': [torch.nn.functional.tanh],  # torch.nn.functional.tanh,
     'depth_x': [3, 5, 7],
     'width_x': [32, 64],
@@ -25,6 +26,17 @@ hyper_param_space = {
     'lr': [1e-2, 1e-3],
     'direct_dif': [False],
     'objective': ['survival']
+=======
+    'transformation': [torch.nn.functional.tanh,],
+    'depth_x': [2],
+    'width_x': [64],
+    'depth': [2],
+    'width': [64],
+    'bs': [250],
+    'lr': [1e-3],
+    'direct_dif':[False],
+    'objective':['S_mean']
+>>>>>>> Stashed changes
 
 }
 if __name__ == '__main__':

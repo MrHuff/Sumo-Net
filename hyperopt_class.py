@@ -58,7 +58,7 @@ class hyperopt_training():
         self.eval_objective = self.get_eval_objective(self.eval_ob_string,parameters_in['objective'])
         self.train_objective = get_objective(parameters_in['objective'])
         self.model = survival_net(**net_init_params).to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'])
+        self.optimizer = torch.optim.Adam   (self.model.parameters(),lr=parameters_in['lr'])
         results = self.full_loop()
         self.global_hyperit+=1
         results['net_init_params'] = net_init_params
