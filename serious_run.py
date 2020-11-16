@@ -1,5 +1,4 @@
 from hyperopt_class import *
-import numpy as np
 import torch
 import GPUtil
 import argparse
@@ -33,7 +32,6 @@ eval_metrics = [
 'inll'
 ]
 dataset_bs =[[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[500,1000,2500,5000],[250],[250],[250]]
-
 
 #Write serious job script, figure out post processing pipeline...
 if __name__ == '__main__':

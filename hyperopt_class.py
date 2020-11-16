@@ -12,7 +12,6 @@ def square(x):
 
 class hyperopt_training():
     def __init__(self,job_param,hyper_param_space):
-        self.eval_ob_string = job_param['eval_metric']
         self.d_out = job_param['d_out']
         self.dataset_string = job_param['dataset_string']
         self.seed = job_param['seed']
@@ -91,17 +90,19 @@ class hyperopt_training():
             loss.backward()
             self.optimizer.step()
             total_loss_train+=loss.detach()
-        return total_loss_train.item()
+        return total_loss_train.item()/i
 
     def eval_loop(self):
         S_series_container = []
         S_log = []
         f_log = []
+        durations = []
+        events = []
         self.model = self.model.eval()
         t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration, self.grid_size)
         time_grid = torch.from_numpy(t_grid_np).float().to(self.device).unsqueeze(-1)
-        durations  = self.dataloader.dataset.y.squeeze().numpy()
-        events  = self.dataloader.dataset.delta.numpy()
+        # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
+        # events  = self.dataloader.dataset.delta.numpy()
         with torch.no_grad():
             for i,(X,x_cat,y,delta) in enumerate(self.dataloader):
                 X = X.to(self.device)
@@ -125,10 +126,17 @@ class hyperopt_training():
                 S_series_container.append(S_serie.view(-1,self.grid_size).t())
                 S_log.append(S)
                 f_log.append(f)
+                durations.append(y.cpu().numpy())
+                events.append(delta.cpu().numpy())
+
+            durations = np.concatenate(durations).squeeze()
+            events = np.concatenate(events).squeeze()
 
             S_log = torch.cat(S_log)
             f_log = torch.cat(f_log)
+            # reshape(-1, 1)).squeeze()
             S_series_container = pd.DataFrame(torch.cat(S_series_container,1).cpu().numpy())
+            S_series_container=S_series_container.set_index(t_grid_np)
             val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
         return val_likelihood.item(),conc,ibs,inll
 
@@ -153,16 +161,17 @@ class hyperopt_training():
             print(f'Epoch {i} training loss: ',self.training_loop())
             if i%self.validation_interval==0:
                 val_likelihood,conc,ibs,inll = self.validation_score()
+                if self.selection_criteria == 'train':
+                    criteria = val_likelihood  # minimize #
+                elif self.selection_criteria == 'concordance':
+                    criteria = -conc  # maximize
+                elif self.selection_criteria == 'ibs':
+                    criteria = ibs  # minimize
+                elif self.selection_criteria == 'inll':
+                    criteria = inll  # maximize
+                print('criteria score: ', criteria)
                 if criteria<best:
-                    if self.selection_criteria == 'train':
-                        criteria = val_likelihood #minimize #
-                    elif self.selection_criteria == 'concordance':
-                        criteria = -conc #maximize
-                    elif self.selection_criteria == 'ibs':
-                        criteria = ibs #minimize
-                    elif self.selection_criteria == 'inll':
-                        criteria = inll #maximize
-                    best = val_likelihood
+                    best = criteria
                     print('new best val score: ',best)
                     print('Dumping model')
                     self.dump_model()

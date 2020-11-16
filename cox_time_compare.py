@@ -12,7 +12,7 @@ from utils.dataloaders import toy_data_class
 
 if __name__ == '__main__':
 
-    for toy_dat in [6]:
+    for toy_dat in [5]:
         net = MLPVanillaCoxTime(in_features=1,num_nodes=[64,64,64,64],batch_norm=True,dropout=0.1)
         if toy_dat==5:
             test_X = torch.Tensor([[0], [0.3], [1.0]]).cuda()
@@ -43,10 +43,10 @@ if __name__ == '__main__':
         get_target = lambda df: (df['duration'].values, df['event'].values)
         y_train = labtrans.fit_transform(*get_target(df_train))
         y_val = labtrans.transform(*get_target(df_val))
-        durations_test, events_test = get_target(df_test)
+        (durations_test, events_test) = labtrans.transform(*get_target(df_test))
         val = tt.tuplefy(x_val, y_val)
 
-        model = CoxTime(net, tt.optim.Adam, labtrans=labtrans)
+        model = CoxTime(net, tt.optim.Adam)
         batch_size = 250
         model.optimizer.set_lr(0.001)
         epochs = 512
@@ -55,14 +55,16 @@ if __name__ == '__main__':
         log = model.fit(x_train, y_train, batch_size, epochs, callbacks, verbose,
                         val_data=val.repeat(10).cat())
         _ = model.compute_baseline_hazards()
-        surv = model.predict_surv_df(input = test_X,batch_size=5000) #negerballe, passing wrong data... pass real test data...
+        surv = model.predict_surv_df(input = x_test,batch_size=5000) # passing wrong data... pass real test data...
         print(surv)
-        surv.iloc[:, :test_X.shape[0]].plot()
-        plt.ylabel('S(t | x)')
-        _ = plt.xlabel('Time')
-        plt.savefig(f'./cox_time_survival_plot_dataset_{toy_dat}.png')
-        eval_obj = EvalSurv(surv=surv,durations=durations_test[:6],events=events_test[:6],censor_surv='km')
-        print(eval_obj.concordance_td())
+        # surv.iloc[:, :x_test.shape[0]].plot()
+        # plt.ylabel('S(t | x)')
+        # _ = plt.xlabel('Time')
+        # plt.savefig(f'./cox_time_survival_plot_dataset_{toy_dat}.png')
+        # Ok Issue with validation objective. Comparison is too great?!
+        eval_obj = EvalSurv(surv=surv,durations=durations_test,events=events_test,censor_surv='km')
+        conc = eval_obj.concordance_td()
+        print(conc)
         time_grid = np.linspace(durations_test.min(), durations_test.max(), 100)
         eval_obj.brier_score(time_grid)
         print(eval_obj.integrated_brier_score(time_grid))
