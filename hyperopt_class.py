@@ -21,6 +21,7 @@ class hyperopt_training():
         self.hyperits = job_param['hyperits']
         self.selection_criteria = job_param['selection_criteria']
         self.grid_size  = job_param['grid_size']
+        self.test_grid_size  = job_param['test_grid_size']
         self.validation_interval = job_param['validation_interval']
         self.global_hyperit = 0
         torch.cuda.set_device(self.device)
@@ -92,14 +93,14 @@ class hyperopt_training():
             total_loss_train+=loss.detach()
         return total_loss_train.item()/i
 
-    def eval_loop(self):
+    def eval_loop(self,grid_size):
         S_series_container = []
         S_log = []
         f_log = []
         durations = []
         events = []
         self.model = self.model.eval()
-        t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration, self.grid_size)
+        t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration, grid_size)
         time_grid = torch.from_numpy(t_grid_np).float().to(self.device).unsqueeze(-1)
         # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
         # events  = self.dataloader.dataset.delta.numpy()
@@ -111,11 +112,11 @@ class hyperopt_training():
                 mask = delta == 1
                 X_f = X[mask, :]
                 y_f = y[mask, :]
-                X_repeat = X.repeat_interleave(self.grid_size,0)
+                X_repeat = X.repeat_interleave(grid_size,0)
                 if not isinstance(x_cat, list):
                     x_cat = x_cat.to(self.device)
                     x_cat_f = x_cat[mask, :]
-                    x_cat_repeat = x_cat.repeat_interleave(self.grid_size,0)
+                    x_cat_repeat = x_cat.repeat_interleave(grid_size,0)
                 else:
                     x_cat_f = []
                     x_cat_repeat = []
@@ -123,30 +124,32 @@ class hyperopt_training():
                 f = self.model(X_f, y_f,x_cat_f)
                 input_time = time_grid.repeat((X.shape[0],1))
                 S_serie =self.model.forward_S_eval(X_repeat,input_time,x_cat_repeat)#Fix
-                S_series_container.append(S_serie.view(-1,self.grid_size).t())
+                S_series_container.append(S_serie.view(-1,grid_size).t())
                 S_log.append(S)
                 f_log.append(f)
                 durations.append(y.cpu().numpy())
                 events.append(delta.cpu().numpy())
 
-            durations = np.concatenate(durations).squeeze()
+            durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
+            #durations = np.concatenate(durations).squeeze()
             events = np.concatenate(events).squeeze()
 
             S_log = torch.cat(S_log)
             f_log = torch.cat(f_log)
             # reshape(-1, 1)).squeeze()
             S_series_container = pd.DataFrame(torch.cat(S_series_container,1).cpu().numpy())
-            S_series_container=S_series_container.set_index(t_grid_np)
+            S_series_container=S_series_container.set_index(self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze())
+            #S_series_container=S_series_container.set_index(t_grid_np)
             val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
         return val_likelihood.item(),conc,ibs,inll
 
     def validation_score(self):
         self.dataloader.dataset.set(mode='val')
-        return self.eval_loop()
+        return self.eval_loop(self.grid_size)
 
     def test_score(self):
         self.dataloader.dataset.set(mode='test')
-        return self.eval_loop()
+        return self.eval_loop(self.test_grid_size)
 
     def dump_model(self):
         torch.save(self.model.state_dict(), self.save_path + f'best_model_{self.global_hyperit}.pt')
@@ -213,16 +216,21 @@ class hyperopt_training():
                     algo=rand.suggest,
                     max_evals=self.hyperits,
                     trials=trials,
-                    verbose=1)
+                    verbose=True)
         print(space_eval(self.hyperparameter_space, best))
         pickle.dump(trials,
                     open(self.save_path + 'hyperopt_database.p',
                          "wb"))
 
 
-
-
-
+    def post_process(self):
+        trials = pickle.load(open(self.save_path + 'hyperopt_database.p',
+                         "rb"))
+        reverse = True
+        best_trial = sorted(trials.results, key=lambda x: x['test_loss'], reverse=reverse)[0]
+        data = [best_trial['test_loglikelihood'],best_trial['test_conc'],best_trial['test_ibs'],best_trial['test_inll']]
+        df = pd.DataFrame([data],columns=['test_loglikelihood','test_conc','test_ibs','test_inll'])
+        df.to_csv(self.save_path+'best_results.csv',index_label=False)
 
 
 

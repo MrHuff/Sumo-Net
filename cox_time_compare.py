@@ -8,11 +8,11 @@ from pycox.models import CoxTime
 from pycox.models.cox_time import MLPVanillaCoxTime
 from pycox.evaluation import EvalSurv
 from utils.dataloaders import toy_data_class
-
+import pandas as pd
 
 if __name__ == '__main__':
 
-    for toy_dat in [5]:
+    for toy_dat in [7]:
         net = MLPVanillaCoxTime(in_features=1,num_nodes=[64,64,64,64],batch_norm=True,dropout=0.1)
         if toy_dat==5:
             test_X = torch.Tensor([[0], [0.3], [1.0]]).cuda()
@@ -43,7 +43,7 @@ if __name__ == '__main__':
         get_target = lambda df: (df['duration'].values, df['event'].values)
         y_train = labtrans.fit_transform(*get_target(df_train))
         y_val = labtrans.transform(*get_target(df_val))
-        (durations_test, events_test) = labtrans.transform(*get_target(df_test))
+        durations_test, events_test = get_target(df_test)
         val = tt.tuplefy(x_val, y_val)
 
         model = CoxTime(net, tt.optim.Adam)
@@ -64,14 +64,13 @@ if __name__ == '__main__':
         # Ok Issue with validation objective. Comparison is too great?!
         eval_obj = EvalSurv(surv=surv,durations=durations_test,events=events_test,censor_surv='km')
         conc = eval_obj.concordance_td()
-        print(conc)
         time_grid = np.linspace(durations_test.min(), durations_test.max(), 100)
         eval_obj.brier_score(time_grid)
-        print(eval_obj.integrated_brier_score(time_grid))
+        ibs = eval_obj.integrated_brier_score(time_grid)
         eval_obj.nbll(time_grid).plot()
-        print(eval_obj.integrated_nbll(time_grid))
-
-
+        inll = eval_obj.integrated_nbll(time_grid)
+        df = pd.DataFrame([[conc,ibs,inll]],columns=['test_conc','test_ibs','test_inll'])
+        df.to_csv(f'./kvamme_test_data={toy_dat}.csv')
 
 
 

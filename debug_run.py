@@ -36,7 +36,7 @@ if __name__ == '__main__':
         'objective': ['S_mean']  # S_mean
 
     }
-    for i in [5]:
+    for i in [7]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         device = devices[0]
         job_params = {
@@ -47,10 +47,12 @@ if __name__ == '__main__':
             'total_epochs': 250,
             'device': device,
             'patience': 50,
-            'hyperits': 2,
+            'hyperits': 1,
             'selection_criteria':'concordance',
             'grid_size':1000,
+            'test_grid_size':10000,
             'validation_interval':2,
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         training_obj.run()
+        training_obj.post_process()
