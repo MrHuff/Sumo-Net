@@ -2,6 +2,9 @@ from hyperopt_class import *
 import torch
 import GPUtil
 import argparse
+import warnings
+warnings.simplefilter("ignore")
+
 
 def job_parser():
     parser = argparse.ArgumentParser()
@@ -9,9 +12,10 @@ def job_parser():
     parser.add_argument('--seed', type=int, nargs='?', help='selects the seed to split the data on')
     parser.add_argument('--eval_metric', type=int, nargs='?', default=0, help='which evaluation metric to use')
     parser.add_argument('--total_epochs', type=int, nargs='?', default=50, help='total number of epochs to train')
-    parser.add_argument('--grid_size', type=int, nargs='?', default=100, help='grid_size for evaluation')
-    parser.add_argument('--hyperits', type=int, nargs='?', default=10, help='nr of hyperits to conduct')
-    parser.add_argument('--patience', type=int, nargs='?', default=10, help='# of epochs before terminating in validation error improvement')
+    parser.add_argument('--grid_size', type=int, nargs='?', default=1000, help='grid_size for evaluation')
+    parser.add_argument('--test_grid_size', type=int, nargs='?', default=10000, help='grid_size for evaluation')
+    parser.add_argument('--hyperits', type=int, nargs='?', default=25, help='nr of hyperits to conduct')
+    parser.add_argument('--patience', type=int, nargs='?', default=50, help='# of epochs before terminating in validation error improvement')
     parser.add_argument('--validation_interval', type=int, nargs='?', default=5, help='nr of epochs between validations')
     parser.add_argument('--total_nr_gpu', type=int, nargs='?', default=4, help='nr of epochs between validations')
     return parser
@@ -40,10 +44,10 @@ if __name__ == '__main__':
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square,torch.nn.functional.relu],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
-        'depth_x': [1,2,3,4],
-        'width_x': [16,32,64,128],
-        'depth': [1,2,3,4],
-        'width': [16,32,64,128],
+        'depth_x': [1,2,3,4,5],
+        'width_x': [16,32,64,128,256,512],
+        'depth': [1,2,3,4,5],
+        'width': [16,32,64,128,256,512],
         'bs': dataset_bs[args['dataset']],
         'lr': [1e-3,1e-4,1e-2],
         'direct_dif': [False],
@@ -57,14 +61,15 @@ if __name__ == '__main__':
         'd_out': 1,
         'dataset_string': datasets[args['dataset']],
         'seed': args['seed'],
-        'eval_metric': args['eval_metric'],
         'total_epochs': args['total_epochs'],
         'device': device,
         'patience': args['patience'],
         'hyperits':  args['hyperits'],
-        'selection_criteria': args['selection_criteria'],
+        'selection_criteria': eval_metrics[args['eval_metric']],
         'grid_size':args['grid_size'],
+        'test_grid_size': args['test_grid_size'],
         'validation_interval': args['validation_interval']
     }
     training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
     training_obj.run()
+    training_obj.post_process()

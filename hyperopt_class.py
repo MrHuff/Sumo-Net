@@ -66,6 +66,10 @@ class hyperopt_training():
         results = self.full_loop()
         self.global_hyperit+=1
         results['net_init_params'] = net_init_params
+        del self.model
+        del self.optimizer
+        del self.dataloader
+        torch.cuda.empty_cache()
         return results
 
     def training_loop(self):
@@ -100,11 +104,13 @@ class hyperopt_training():
         durations = []
         events = []
         self.model = self.model.eval()
-        t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration, grid_size)
-        time_grid = torch.from_numpy(t_grid_np).float().to(self.device).unsqueeze(-1)
         # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
         # events  = self.dataloader.dataset.delta.numpy()
+        chunks = self.dataloader.batch_size//50+1
         with torch.no_grad():
+            t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
+                                    grid_size)
+            time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
             for i,(X,x_cat,y,delta) in enumerate(self.dataloader):
                 X = X.to(self.device)
                 y = y.to(self.device)
@@ -112,19 +118,27 @@ class hyperopt_training():
                 mask = delta == 1
                 X_f = X[mask, :]
                 y_f = y[mask, :]
-                X_repeat = X.repeat_interleave(grid_size,0)
                 if not isinstance(x_cat, list):
                     x_cat = x_cat.to(self.device)
                     x_cat_f = x_cat[mask, :]
-                    x_cat_repeat = x_cat.repeat_interleave(grid_size,0)
                 else:
                     x_cat_f = []
-                    x_cat_repeat = []
                 S = self.model.forward_cum(X, y,mask,x_cat)
                 f = self.model(X_f, y_f,x_cat_f)
-                input_time = time_grid.repeat((X.shape[0],1))
-                S_serie =self.model.forward_S_eval(X_repeat,input_time,x_cat_repeat)#Fix
-                S_series_container.append(S_serie.view(-1,grid_size).t())
+                if not isinstance(x_cat, list):
+                    for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
+                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                        X_repeat = chk.repeat_interleave(grid_size, 0)
+                        x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
+                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                else:
+                    x_cat_repeat = []
+                    for chk in torch.chunk(X, chunks):
+                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                        X_repeat = chk.repeat_interleave(grid_size, 0)
+                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
                 S_log.append(S)
                 f_log.append(f)
                 durations.append(y.cpu().numpy())
@@ -137,7 +151,7 @@ class hyperopt_training():
             S_log = torch.cat(S_log)
             f_log = torch.cat(f_log)
             # reshape(-1, 1)).squeeze()
-            S_series_container = pd.DataFrame(torch.cat(S_series_container,1).cpu().numpy())
+            S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
             S_series_container=S_series_container.set_index(self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze())
             #S_series_container=S_series_container.set_index(t_grid_np)
             val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
@@ -213,7 +227,7 @@ class hyperopt_training():
         trials = Trials()
         best = fmin(fn=self,
                     space=self.hyperparameter_space,
-                    algo=rand.suggest,
+                    algo=tpe.suggest,
                     max_evals=self.hyperits,
                     trials=trials,
                     verbose=True)
