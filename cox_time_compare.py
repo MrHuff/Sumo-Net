@@ -12,7 +12,7 @@ import pandas as pd
 
 if __name__ == '__main__':
 
-    for toy_dat in [7]:
+    for toy_dat in [5,6,7]:
         net = MLPVanillaCoxTime(in_features=1,num_nodes=[64,64,64,64],batch_norm=True,dropout=0.1)
         if toy_dat==5:
             test_X = torch.Tensor([[0], [0.3], [1.0]]).cuda()
@@ -65,9 +65,7 @@ if __name__ == '__main__':
         eval_obj = EvalSurv(surv=surv,durations=durations_test,events=events_test,censor_surv='km')
         conc = eval_obj.concordance_td()
         time_grid = np.linspace(durations_test.min(), durations_test.max(), 100)
-        eval_obj.brier_score(time_grid)
         ibs = eval_obj.integrated_brier_score(time_grid)
-        eval_obj.nbll(time_grid).plot()
         inll = eval_obj.integrated_nbll(time_grid)
         df = pd.DataFrame([[conc,ibs,inll]],columns=['test_conc','test_ibs','test_inll'])
         df.to_csv(f'./kvamme_test_data={toy_dat}.csv')

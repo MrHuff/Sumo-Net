@@ -152,7 +152,8 @@ class hyperopt_training():
             f_log = torch.cat(f_log)
             # reshape(-1, 1)).squeeze()
             S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
-            S_series_container=S_series_container.set_index(self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze())
+            t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
+            S_series_container=S_series_container.set_index(t_grid_np)
             #S_series_container=S_series_container.set_index(t_grid_np)
             val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
         return val_likelihood.item(),conc,ibs,inll

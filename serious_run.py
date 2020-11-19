@@ -51,7 +51,7 @@ if __name__ == '__main__':
         'bs': dataset_bs[args['dataset']],
         'lr': [1e-3,1e-4,1e-2],
         'direct_dif': [False],
-        'dropout': [0.5,0.6,0.7,0.8,0.9,1.0],
+        'dropout': [0.0,0.1,0.2,0.3,0.4,0.5],
         'objective': ['S_mean']  # S_mean
     }
 
