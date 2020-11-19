@@ -143,7 +143,8 @@ class hyperopt_training():
                 f_log.append(f)
                 durations.append(y.cpu().numpy())
                 events.append(delta.cpu().numpy())
-
+                if i*self.dataloader.batch_size>25000:
+                    break
             durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
             #durations = np.concatenate(durations).squeeze()
             events = np.concatenate(events).squeeze()
@@ -241,8 +242,16 @@ class hyperopt_training():
     def post_process(self):
         trials = pickle.load(open(self.save_path + 'hyperopt_database.p',
                          "rb"))
-        reverse = True
-        best_trial = sorted(trials.results, key=lambda x: x['test_loss'], reverse=reverse)[0]
+
+        if self.selection_criteria == 'train':
+            reverse = False
+        elif self.selection_criteria == 'concordance':
+            reverse = True
+        elif self.selection_criteria == 'ibs':
+            reverse = False
+        elif self.selection_criteria == 'inll':
+            reverse = False
+        best_trial = sorted(trials.results, key=lambda x: x['test_loss'], reverse=reverse)[0] #low to high
         data = [best_trial['test_loglikelihood'],best_trial['test_conc'],best_trial['test_ibs'],best_trial['test_inll']]
         df = pd.DataFrame([data],columns=['test_loglikelihood','test_conc','test_ibs','test_inll'])
         df.to_csv(self.save_path+'best_results.csv',index_label=False)

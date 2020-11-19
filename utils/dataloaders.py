@@ -6,6 +6,7 @@ import torch
 from .toy_data_generation import toy_data_class
 from sklearn.preprocessing import MinMaxScaler,StandardScaler
 from sklearn_pandas import DataFrameMapper
+from sklearn.model_selection import train_test_split
 import pandas as pd
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
@@ -83,10 +84,8 @@ class surival_dataset(Dataset):
         else:
             self.unique_cat_cols = []
 
-        df_test = df_train.sample(frac=0.2,random_state=seed)
-        df_train = df_train.drop(df_test.index)
-        df_val = df_train.sample(frac=0.25,random_state=seed)
-        df_train = df_train.drop(df_val.index)
+        df_train, df_test, y_train, y_test = train_test_split(df_train, df_train[self.event_col], test_size = 0.2, random_state = seed,stratify=df_train[self.event_col])
+        df_train, df_val, y_train, y_val = train_test_split(df_train, df_train[self.event_col], test_size = 0.25, random_state = seed,stratify=df_train[self.event_col])
 
         x_train = self.x_mapper.fit_transform(df_train[cont_cols+binary_cols]).astype('float32')
         x_val = self.x_mapper.transform(df_val[cont_cols+binary_cols]).astype('float32')
@@ -137,7 +136,100 @@ class surival_dataset(Dataset):
     def __len__(self):
         return self.X.shape[0]
 
+class chunk_iterator():
+    def __init__(self,X,delta,y,cat_X,shuffle,batch_size):
+        self.X = X
+        self.delta = delta
+        self.y = y
+        self.cat_X = cat_X
+        self.shuffle = shuffle
+        self.batch_size = batch_size
+        self.n = self.X.shape[0]
+        self.chunks=self.n//batch_size
+        self.perm = torch.randperm(self.n)
+        self.valid_cat = not isinstance(self.cat_X, list)
+        if self.shuffle:
+            self.X = self.X[self.perm,:]
+            self.delta = self.delta[self.perm]
+            self.y = self.y[self.perm,:]
+            if self.valid_cat: #F
+                self.cat_X = self.cat_X[self.perm,:]
+        self._index = 0
+        self.it_X = torch.chunk(self.X,self.chunks)
+        self.it_delta = torch.chunk(self.delta,self.chunks)
+        self.it_y = torch.chunk(self.y,self.chunks)
+        if self.valid_cat:  # F
+            self.it_cat_X = torch.chunk(self.cat_X,self.chunks)
+        else:
+            self.it_cat_X = []
+        self.true_chunks = len(self.it_X)
+
+    def __next__(self):
+        ''''Returns the next value from team object's lists '''
+        if self._index < self.true_chunks:
+            if self.valid_cat:
+                result = (self.it_X[self._index],self.it_cat_X[self._index],self.it_y[self._index],self.it_delta[self._index])
+            else:
+                result = (self.it_X[self._index],[],self.it_y[self._index],self.it_delta[self._index])
+            self._index += 1
+            return result
+        # End of Iteration
+        raise StopIteration
+
+class super_fast_iterator():
+    def __init__(self,X,delta,y,cat_X,batch_size):
+        self.X = X
+        self.delta = delta
+        self.y = y
+        self.cat_X = cat_X
+        self.batch_size = batch_size
+        self.n = self.X.shape[0]
+        self.chunks=self.n//batch_size+1
+        self.perm = torch.randperm(self.n)
+        self.valid_cat = not isinstance(self.cat_X, list)
+        self._index = 0
+        self.rand_range = self.n - self.batch_size - 1
+    def __next__(self):
+        ''''Returns the next value from team object's lists '''
+        if self._index < self.chunks:
+            i = np.random.randint(0, self.rand_range)
+            i_end = i+self.batch_size
+            if self.valid_cat:
+                result = (self.X[i:i_end,:],self.cat_X[i:i_end,:],self.y[i:i_end,:],self.delta[i:i_end])
+            else:
+                result = (self.X[i:i_end,:],[],self.y[i:i_end,:],self.delta[i:i_end])
+            self._index += 1
+            return result
+        # End of Iteration
+        raise StopIteration
+
+
+
+
+class custom_dataloader():
+    def __init__(self,dataset,batch_size=32,shuffle=False,super_fast=False):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.super_fast = super_fast
+    def __iter__(self):
+        if self.super_fast:
+            return super_fast_iterator(X =self.dataset.X,
+                                  delta = self.dataset.delta,
+                                  y = self.dataset.y,
+                                  cat_X = self.dataset.cat_X,
+                                  batch_size=self.batch_size)
+        else:
+            return chunk_iterator(X =self.dataset.X,
+                                  delta = self.dataset.delta,
+                                  y = self.dataset.y,
+                                  cat_X = self.dataset.cat_X,
+                                  shuffle = self.shuffle,
+                                  batch_size=self.batch_size)
+
+
 def get_dataloader(str_identifier,bs,seed):
     d = surival_dataset(str_identifier,seed)
-    dat = DataLoader(dataset=d,batch_size=bs,shuffle=True)
+    # dat = DataLoader(dataset=d,batch_size=bs,shuffle=True,pin_memory=True)
+    dat = custom_dataloader(dataset=d,batch_size=bs,shuffle=True,super_fast=False)
     return dat

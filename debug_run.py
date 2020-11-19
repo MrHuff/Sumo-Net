@@ -11,11 +11,7 @@ datasets = ['support',
             'checkboard',
             'normal'
             ]
-
-
-
-
-
+#Uppgrade dataloader rip, probably uses some retarded permutation which is really slow.
 #Write serious job script, figure out post processing pipeline...
 if __name__ == '__main__':
     #Evaluate other toy examples to draw further conclusions...
@@ -29,14 +25,14 @@ if __name__ == '__main__':
         'width_x': [64],
         'depth': [2],
         'width': [64],
-        'bs': [250],
+        'bs': [25000],
         'lr': [1e-3],
         'direct_dif': [False],
-        'dropout': [0.1],
+        'dropout': [0.25],
         'objective': ['S_mean']  # S_mean
 
     }
-    for i in [5,6,7]:
+    for i in [4]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         device = devices[0]
         job_params = {
