@@ -145,7 +145,7 @@ class chunk_iterator():
         self.shuffle = shuffle
         self.batch_size = batch_size
         self.n = self.X.shape[0]
-        self.chunks=self.n//batch_size
+        self.chunks=self.n//batch_size+1
         self.perm = torch.randperm(self.n)
         self.valid_cat = not isinstance(self.cat_X, list)
         if self.shuffle:
@@ -189,6 +189,8 @@ class super_fast_iterator():
         self.valid_cat = not isinstance(self.cat_X, list)
         self._index = 0
         self.rand_range = self.n - self.batch_size - 1
+        if self.rand_range<0:
+            self.rand_range=1
     def __next__(self):
         ''''Returns the next value from team object's lists '''
         if self._index < self.chunks:

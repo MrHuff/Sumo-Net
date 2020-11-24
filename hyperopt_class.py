@@ -95,7 +95,7 @@ class hyperopt_training():
             loss.backward()
             self.optimizer.step()
             total_loss_train+=loss.detach()
-        return total_loss_train.item()/i
+        return total_loss_train.item()/(i+1)
 
     def eval_loop(self,grid_size):
         S_series_container = []

@@ -32,7 +32,7 @@ if __name__ == '__main__':
         'objective': ['S_mean']  # S_mean
 
     }
-    for i in [4]:
+    for i in [0]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         device = devices[0]
         job_params = {
