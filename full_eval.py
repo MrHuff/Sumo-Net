@@ -92,7 +92,6 @@ def get_best_model(load_path,selection_criteria):
     net_init_params = best_trial['net_init_params']
     return net_init_params,best_tid
 
-
 if __name__ == '__main__':
     gpu = True
     if gpu:
