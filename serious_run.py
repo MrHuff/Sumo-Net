@@ -17,6 +17,7 @@ def job_parser():
     parser.add_argument('--hyperits', type=int, nargs='?', default=25, help='nr of hyperits to conduct')
     parser.add_argument('--patience', type=int, nargs='?', default=50, help='# of epochs before terminating in validation error improvement')
     parser.add_argument('--validation_interval', type=int, nargs='?', default=5, help='nr of epochs between validations')
+    parser.add_argument('--loss_type', type=int, nargs='?', default=0, help='nr of epochs between validations')
     parser.add_argument('--total_nr_gpu', type=int, nargs='?', default=4, help='nr of epochs between validations')
     return parser
 
@@ -36,7 +37,7 @@ eval_metrics = [
 'inll'
 ]
 dataset_bs =[[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[500,1000,2500,5000],[250,500,1000,2500],[250,500,1000,2500],[250,500,1000,2500]]
-
+loss_type = ['S_mean','hazard_mean']
 #Write serious job script, figure out post processing pipeline...
 if __name__ == '__main__':
     args = vars(job_parser().parse_args())
@@ -51,8 +52,7 @@ if __name__ == '__main__':
         'bs': dataset_bs[args['dataset']],
         'lr': [1e-3,1e-4,1e-2],
         'direct_dif': [False],
-        'dropout': [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8],
-        'objective': ['S_mean']  # S_mean
+        'dropout': [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8]
     }
 
     devices = GPUtil.getAvailable(order='memory', limit=args['total_nr_gpu'])
@@ -68,7 +68,8 @@ if __name__ == '__main__':
         'selection_criteria': eval_metrics[args['eval_metric']],
         'grid_size':args['grid_size'],
         'test_grid_size': args['test_grid_size'],
-        'validation_interval': args['validation_interval']
+        'validation_interval': args['validation_interval'],
+        'objective': loss_type[args['loss_type']]  # S_mean
     }
     training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
     training_obj.run()

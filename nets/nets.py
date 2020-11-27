@@ -142,24 +142,24 @@ class survival_net(torch.nn.Module):
             f = ((h_forward - h) / self.eps)*F*(1-F) #(F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
         return f
 
-    def forward_cum_hazard(self, x_cov, y, mask):
-        x_cov = self.covariate_net(x_cov)
+    def forward_cum_hazard(self, x_cov, y, mask,x_cat=[]):
+        x_cov = self.covariate_net((x_cov,x_cat))
         h = self.middle_net((x_cov, y))
-        return h**2 #log1plusexp(h)
+        return log1plusexp(h)
 
-    def forward_hazard(self, x_cov, y):
-        x_cov = self.covariate_net(x_cov)
+    def forward_hazard(self, x_cov, y,x_cat=[]):
+        x_cov = self.covariate_net((x_cov,x_cat))
         h = self.middle_net((x_cov, y))
         h_forward = self.middle_net((x_cov, y + self.eps))
         if self.direct:
-            hazard = (log1plusexp(h_forward) - log1plusexp(h))/self.eps
+            hazard = (log1plusexp(h_forward) - log1plusexp(h)) / self.eps
         else:
-            hazard = torch.relu(((h_forward-h)/self.eps) * 2*h) #*torch.exp(h) #
+            hazard = torch.sigmoid(h) * ((h_forward - h) / self.eps)
         return hazard
 
     def forward_S_eval(self,x_cov,y,x_cat=[]):
         if self.objective in ['hazard','hazard_mean']:
-            S = torch.exp(-self.forward_cum_hazard(x_cov, y, []))
+            S = torch.exp(-self.forward_cum_hazard(x_cov, y, [],x_cat))
             return S
         elif self.objective in ['S','S_mean']:
             x_cov = self.covariate_net((x_cov,x_cat))
@@ -190,12 +190,9 @@ def log_objective_hazard(cum_hazard,hazard): #here cum_hazard should be a vector
     # delta = 1 I'm not sure how to implement that best?
     return -(  (hazard+1e-6).log().sum()-cum_hazard.sum() )
 
-def log_objective_hazard_mean(cum_hazard,hazard): #here cum_hazard should be a vector of
-    # length n, and hazard only needs to be computed for all individuals with
-    # delta = 1 I'm not sure how to implement that best?
-    n = cum_hazard.shape[0]+hazard.shape[0]
+def log_objective_hazard_mean(cum_hazard,hazard):
+    n = cum_hazard.shape[0]
     return -(  (hazard+1e-6).log().sum()-cum_hazard.sum() )/n
-
 
 
 

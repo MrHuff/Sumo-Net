@@ -25,11 +25,11 @@ if __name__ == '__main__':
         'width_x': [64],
         'depth': [2],
         'width': [64],
-        'bs': [25000],
+        'bs': [250],
         'lr': [1e-3],
         'direct_dif': [False],
-        'dropout': [0.25],
-        'objective': ['S_mean']  # S_mean
+        'dropout': [0.5],
+        'objective': ['hazard_mean']  # S_mean
 
     }
     for i in [0]:

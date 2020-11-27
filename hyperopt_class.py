@@ -23,12 +23,13 @@ class hyperopt_training():
         self.grid_size  = job_param['grid_size']
         self.test_grid_size  = job_param['test_grid_size']
         self.validation_interval = job_param['validation_interval']
+        self.objective = job_param['objective']
         self.global_hyperit = 0
         torch.cuda.set_device(self.device)
-        self.save_path = f'./{self.dataset_string}_{self.seed}/'
+        self.save_path = f'./{self.dataset_string}_seed={self.seed}_objective={self.objective}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','objective','dropout']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','dropout']
         self.get_hyperparameterspace(hyper_param_space)
 
     def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
@@ -57,10 +58,10 @@ class hyperopt_training():
             'layers_x': [parameters_in['width_x']]*parameters_in['depth_x'],
             'layers': [parameters_in['width']]*parameters_in['depth'],
             'direct_dif':parameters_in['direct_dif'],
-            'objective':parameters_in['objective'],
+            'objective':self.objective,
             'dropout':parameters_in['dropout']
         }
-        self.train_objective = get_objective(parameters_in['objective'])
+        self.train_objective = get_objective(self.objective)
         self.model = survival_net(**net_init_params).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'])
         results = self.full_loop()
