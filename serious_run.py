@@ -44,15 +44,15 @@ if __name__ == '__main__':
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square,torch.nn.functional.relu],  # torch.sigmoid, torch.relu, torch.exp,
-        'transformation': [torch.nn.functional.tanh],
+        'transformation': [torch.nn.functional.tanh,torch.nn.functional.relu,torch.nn.functional.sigmoid],
         'depth_x': [1,2,3,4,5],
-        'width_x': [16,32,64,128,256,512],
+        'width_x': [32,64,128],
         'depth': [1,2,3,4,5],
-        'width': [16,32,64,128,256,512],
+        'width': [32,64,128],
         'bs': dataset_bs[args['dataset']],
         'lr': [1e-3,1e-4,1e-2],
         'direct_dif': [False],
-        'dropout': [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7,0.8]
+        'dropout': [0.2,0.3,0.4,0.5,0.6,0.7]
     }
 
     devices = GPUtil.getAvailable(order='memory', limit=args['total_nr_gpu'])
