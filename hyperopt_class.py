@@ -7,6 +7,7 @@ import pickle
 import numpy as np
 from pycox.evaluation import EvalSurv
 import pandas as pd
+import shutil
 def square(x):
     return x**2
 
@@ -28,6 +29,9 @@ class hyperopt_training():
         torch.cuda.set_device(self.device)
         self.save_path = f'./{self.dataset_string}_seed={self.seed}_objective={self.objective}/'
         if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+        else:
+            shutil.rmtree(self.save_path)
             os.makedirs(self.save_path)
         self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','dropout']
         self.get_hyperparameterspace(hyper_param_space)
@@ -64,6 +68,7 @@ class hyperopt_training():
         self.train_objective = get_objective(self.objective)
         self.model = survival_net(**net_init_params).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'])
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=2)
         results = self.full_loop()
         self.global_hyperit+=1
         results['net_init_params'] = net_init_params
@@ -181,6 +186,7 @@ class hyperopt_training():
             print(f'Epoch {i} training loss: ',self.training_loop())
             if i%self.validation_interval==0:
                 val_likelihood,conc,ibs,inll = self.validation_score()
+                self.scheduler.step(val_likelihood)
                 if self.selection_criteria == 'train':
                     criteria = val_likelihood  # minimize #
                 elif self.selection_criteria == 'concordance':

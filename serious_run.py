@@ -37,22 +37,27 @@ eval_metrics = [
 'inll'
 ]
 dataset_bs =[[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[500,1000,2500,5000],[250,500,1000,2500],[250,500,1000,2500],[250,500,1000,2500]]
+dataset_d =[[1,2],[1,2],[100,250,500,1000],[100,250,500,1000],[500,1000,2500,5000],[250,500,1000,2500],[250,500,1000,2500],[250,500,1000,2500]]
+dataset_w =[[16,32],[8,16,32],[100,250,500,1000],[100,250,500,1000],[500,1000,2500,5000],[250,500,1000,2500],[250,500,1000,2500],[250,500,1000,2500]]
+
 loss_type = ['S_mean','hazard_mean']
 #Write serious job script, figure out post processing pipeline...
 if __name__ == '__main__':
     args = vars(job_parser().parse_args())
+    d = dataset_d[args['dataset']]
+    w = dataset_w[args['dataset']]
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
-        'bounding_op': [square,torch.nn.functional.relu],  # torch.sigmoid, torch.relu, torch.exp,
-        'transformation': [torch.nn.functional.tanh,torch.nn.functional.relu,torch.nn.functional.sigmoid],
-        'depth_x': [1,2,3,4,5],
-        'width_x': [32,64,128],
-        'depth': [1,2,3,4,5],
-        'width': [32,64,128],
+        'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
+        'transformation': [torch.nn.functional.tanh],
+        'depth_x': d,
+        'width_x': w,
+        'depth': d,
+        'width': w,
         'bs': dataset_bs[args['dataset']],
-        'lr': [1e-3,1e-4,1e-2],
+        'lr': [1e-3,1e-2],
         'direct_dif': [False],
-        'dropout': [0.2,0.3,0.4,0.5,0.6,0.7]
+        'dropout': [0.0,0.1,0.2,0.3,0.7]
     }
 
     devices = GPUtil.getAvailable(order='memory', limit=args['total_nr_gpu'])

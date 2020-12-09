@@ -87,13 +87,19 @@ class surival_dataset(Dataset):
         df_train, df_test, y_train, y_test = train_test_split(df_train, df_train[self.event_col], test_size = 0.2, random_state = seed,stratify=df_train[self.event_col])
         df_train, df_val, y_train, y_val = train_test_split(df_train, df_train[self.event_col], test_size = 0.25, random_state = seed,stratify=df_train[self.event_col])
 
+        # if str_identifier not in ['gbsg']:
         x_train = self.x_mapper.fit_transform(df_train[cont_cols+binary_cols]).astype('float32')
         x_val = self.x_mapper.transform(df_val[cont_cols+binary_cols]).astype('float32')
         x_test = self.x_mapper.transform(df_test[cont_cols+binary_cols]).astype('float32')
+        # else:
+        #     x_train =df_train[cont_cols + binary_cols].values.astype('float32')
+        #     x_val = df_val[cont_cols + binary_cols].values.astype('float32')
+        #     x_test = df_test[cont_cols + binary_cols].values.astype('float32')
 
         y_train = self.duration_mapper.fit_transform(df_train[self.duration_col].values.reshape(-1,1)).astype('float32')
         y_val = self.duration_mapper.transform(df_val[self.duration_col].values.reshape(-1,1)).astype('float32')
         y_test = self.duration_mapper.transform(df_test[self.duration_col].values.reshape(-1,1)).astype('float32')
+
         self.split(X=x_train,delta=df_train[self.event_col],y=y_train,mode='train',cat=cat_cols,df=df_train)
         self.split(X=x_val,delta=df_val[self.event_col],y=y_val,mode='val',cat=cat_cols,df=df_val)
         self.split(X=x_test,delta=df_test[self.event_col],y=y_test,mode='test',cat=cat_cols,df=df_test)
@@ -191,6 +197,7 @@ class super_fast_iterator():
         self.rand_range = self.n - self.batch_size - 1
         if self.rand_range<0:
             self.rand_range=1
+
     def __next__(self):
         ''''Returns the next value from team object's lists '''
         if self._index < self.chunks:
@@ -204,9 +211,6 @@ class super_fast_iterator():
             return result
         # End of Iteration
         raise StopIteration
-
-
-
 
 class custom_dataloader():
     def __init__(self,dataset,batch_size=32,shuffle=False,super_fast=False):

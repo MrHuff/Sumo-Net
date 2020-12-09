@@ -17,13 +17,14 @@ def get_best_params(path,selection_criteria):
         reverse = False
     trials = pickle.load(open(path, "rb"))
     best_trial = sorted(trials.results, key=lambda x: x[selection_criteria], reverse=reverse)[0]
+    print(trials)
     print('best_param_for ', selection_criteria)
     print(best_trial)
 
 if __name__ == '__main__':
     objective = ['S_mean','hazard_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
-    c = criteria[1]
+    c = criteria[0]
     o = objective[0]
     args = vars(post_processing_parser().parse_args())
     d_str = datasets[args['dataset']]
@@ -34,7 +35,8 @@ if __name__ == '__main__':
         # load_str = f'./{d_str}_{s}/best_results.csv'
         mini_df = pd.read_csv(load_str)
         df.append(mini_df)
-        get_best_params(f'./{d_str}_{s}/hyperopt_database.p',c)
+        # get_best_params(f'./{d_str}_{s}/hyperopt_database.p',c)
+        get_best_params(f'./{d_str}_seed={s}_objective={o}/hyperopt_database.p',c)
     df = pd.concat(df)
     print(df.describe())
 
