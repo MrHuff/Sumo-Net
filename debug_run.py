@@ -26,13 +26,13 @@ if __name__ == '__main__':
         'width_x': [16],
         'depth': [1],
         'width': [16],
-        'bs': [2500],
+        'bs': [500],
         'lr': [1e-2],
         'direct_dif': [False],
-        'dropout': [0.2],
+        'dropout': [0.5],
 
     }
-    for i in [3]:
+    for i in [2]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -50,6 +50,7 @@ if __name__ == '__main__':
             'grid_size':1000,
             'test_grid_size':10000,
             'validation_interval':2,
+            'net_type':'ocean_net',
         'objective': 'S_mean'  # S_mean
 
         }

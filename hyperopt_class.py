@@ -25,9 +25,10 @@ class hyperopt_training():
         self.test_grid_size  = job_param['test_grid_size']
         self.validation_interval = job_param['validation_interval']
         self.objective = job_param['objective']
+        self.net_type = job_param['net_type']
         self.global_hyperit = 0
         torch.cuda.set_device(self.device)
-        self.save_path = f'./{self.dataset_string}_seed={self.seed}_objective={self.objective}/'
+        self.save_path = f'./{self.dataset_string}_seed={self.seed}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
         else:
@@ -66,7 +67,10 @@ class hyperopt_training():
             'dropout':parameters_in['dropout']
         }
         self.train_objective = get_objective(self.objective)
-        self.model = survival_net(**net_init_params).to(self.device)
+        if self.net_type=='survival_net':
+            self.model = survival_net(**net_init_params).to(self.device)
+        else:
+            self.model = ocean_net(**net_init_params).to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'])
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=2)
         results = self.full_loop()
