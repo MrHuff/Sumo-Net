@@ -26,17 +26,20 @@ def generate_job_params(directory='job_dir/'):
         'grid_size':1000,
         'test_grid_size': 10000,
         'validation_interval':1,
-        'loss_type':0
+        'loss_type':0,
+        'net_type':'ocean_net'
     }
     counter = 0
     for s in [1,2,3,4,5]:
         for dataset in [0,1,2,3]:
             for l_type in [0,1]:
-                base_dict['dataset']=dataset
-                base_dict['seed']=s
-                base_dict['loss_type']=l_type
-                save_obj(base_dict,f'job_{counter}',directory)
-                counter +=1
+                for net_t in ['ocean_net','survival_net']:
+                    base_dict['dataset']=dataset
+                    base_dict['seed']=s
+                    base_dict['loss_type']=l_type
+                    base_dict['net_type']=net_t
+                    save_obj(base_dict,f'job_{counter}',directory)
+                    counter +=1
 
 if __name__ == '__main__':
     generate_job_params(directory='job_dir/')

@@ -23,13 +23,13 @@ if __name__ == '__main__':
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
         'depth_x': [1],
-        'width_x': [16],
+        'width_x': [32],
         'depth': [1],
-        'width': [16],
+        'width': [32],
         'bs': [500],
-        'lr': [1e-2],
+        'lr': [1e-1],
         'direct_dif': [False],
-        'dropout': [0.5],
+        'dropout': [0.2],
 
     }
     for i in [2]:
@@ -40,20 +40,21 @@ if __name__ == '__main__':
         job_params = {
             'd_out': 1,
             'dataset_string': datasets[i],
-            'seed': 123,
+            'seed': 123,#,np.random.randint(0,9999),
             'eval_metric': 'train',
             'total_epochs': 500,
             'device': device,
             'patience': 50,
             'hyperits': 1,
             'selection_criteria':'train',
-            'grid_size':1000,
+            'grid_size':250,
             'test_grid_size':10000,
-            'validation_interval':2,
+            'validation_interval':1,
             'net_type':'ocean_net',
         'objective': 'S_mean'  # S_mean
 
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
+        training_obj.debug=True
         training_obj.run()
         training_obj.post_process()

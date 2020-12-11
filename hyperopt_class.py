@@ -8,6 +8,9 @@ import numpy as np
 from pycox.evaluation import EvalSurv
 import pandas as pd
 import shutil
+from torch.utils.tensorboard import SummaryWriter
+from RAdam.radam import RAdam
+
 def square(x):
     return x**2
 
@@ -27,6 +30,7 @@ class hyperopt_training():
         self.objective = job_param['objective']
         self.net_type = job_param['net_type']
         self.global_hyperit = 0
+        self.debug = False
         torch.cuda.set_device(self.device)
         self.save_path = f'./{self.dataset_string}_seed={self.seed}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
@@ -71,7 +75,7 @@ class hyperopt_training():
             self.model = survival_net(**net_init_params).to(self.device)
         else:
             self.model = ocean_net(**net_init_params).to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'])
+        self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'])
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=2)
         results = self.full_loop()
         self.global_hyperit+=1
@@ -186,10 +190,25 @@ class hyperopt_training():
     def full_loop(self):
         counter = 0
         best = np.inf
+        if self.debug:
+            writer = SummaryWriter()
+
         for i in range(self.total_epochs):
-            print(f'Epoch {i} training loss: ',self.training_loop())
+            training_loss = self.training_loop()
+            print(f'Epoch {i} training loss: ', training_loss)
             if i%self.validation_interval==0:
                 val_likelihood,conc,ibs,inll = self.validation_score()
+                if self.debug:
+                    test_likelihood, test_conc, test_ibs, test_inll = self.test_score()
+                    writer.add_scalar('Loss/train', training_loss, i)
+                    writer.add_scalar('Loss/val', val_likelihood, i)
+                    writer.add_scalar('Loss/test', test_likelihood, i)
+                    writer.add_scalar('conc/val', conc,i)
+                    writer.add_scalar('conc/test', test_conc, i)
+                    writer.add_scalar('ibs/val', ibs,i)
+                    writer.add_scalar('ibs/test', test_ibs, i)
+                    writer.add_scalar('inll/val', inll,i)
+                    writer.add_scalar('inll/test',test_inll, i)
                 self.scheduler.step(val_likelihood)
                 if self.selection_criteria == 'train':
                     criteria = val_likelihood  # minimize #

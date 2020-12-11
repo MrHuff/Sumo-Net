@@ -34,9 +34,9 @@ class surival_dataset(Dataset):
             cat_cols = ['x1']
         elif str_identifier == 'flchain':
             data = flchain
-            cont_cols = ['age','kappa','lambda','creatinine']
+            cont_cols = ['sample.yr','age','kappa','lambda','creatinine']
             binary_cols = ['sex','mgus']
-            cat_cols = []
+            cat_cols = ['flc.grp']
         elif str_identifier=='kkbox':
             data = kkbox
             cont_cols = ['n_prev_churns','log_days_between_subs','log_days_since_reg_init','log_payment_plan_days','log_plan_list_price','log_actual_amount_paid','age_at_start']
@@ -58,7 +58,7 @@ class surival_dataset(Dataset):
             binary_cols = []
             cat_cols = []
         df_train = data.read_df()
-
+        df_train = df_train.dropna()
         if str_identifier=='kkbox':
             self.event_col = 'event'
             self.duration_col = 'duration'
@@ -85,7 +85,7 @@ class surival_dataset(Dataset):
             self.unique_cat_cols = []
 
         df_train, df_test, y_train, y_test = train_test_split(df_train, df_train[self.event_col], test_size = 0.2, random_state = seed,stratify=df_train[self.event_col])
-        df_train, df_val, y_train, y_val = train_test_split(df_train, df_train[self.event_col], test_size = 0.25, random_state = seed,stratify=df_train[self.event_col])
+        df_train, df_val, y_train, y_val = train_test_split(df_train, df_train[self.event_col], test_size = 0.2, random_state = seed,stratify=df_train[self.event_col])
 
         # if str_identifier not in ['gbsg']:
         x_train = self.x_mapper.fit_transform(df_train[cont_cols+binary_cols]).astype('float32')

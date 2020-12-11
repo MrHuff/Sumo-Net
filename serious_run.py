@@ -80,6 +80,7 @@ if __name__ == '__main__':
         'grid_size':args['grid_size'],
         'test_grid_size': args['test_grid_size'],
         'validation_interval': args['validation_interval'],
+        'net_type': args['net_type'],
         'objective': loss_type[args['loss_type']]  # S_mean
     }
     training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
