@@ -48,6 +48,7 @@ class hyperopt_training():
         ibs = eval_obj.integrated_brier_score(time_grid)
         inll = eval_obj.integrated_nbll(time_grid)
         return val_likelihood,conc,ibs,inll
+
     def get_hyperparameterspace(self,hyper_param_space):
         self.hyperparameter_space = {}
         for string in self.hyperopt_params:
@@ -73,8 +74,11 @@ class hyperopt_training():
         self.train_objective = get_objective(self.objective)
         if self.net_type=='survival_net':
             self.model = survival_net(**net_init_params).to(self.device)
-        else:
+        elif self.net_type=='ocean_net':
             self.model = ocean_net(**net_init_params).to(self.device)
+        elif self.net_type=='cox_net':
+            self.model = cox_net(**net_init_params).to(self.device)
+
         self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'])
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=2)
         results = self.full_loop()

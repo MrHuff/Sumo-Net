@@ -85,7 +85,7 @@ class surival_dataset(Dataset):
             self.unique_cat_cols = []
 
         df_train, df_test, y_train, y_test = train_test_split(df_train, df_train[self.event_col], test_size = 0.2, random_state = seed,stratify=df_train[self.event_col])
-        df_train, df_val, y_train, y_val = train_test_split(df_train, df_train[self.event_col], test_size = 0.2, random_state = seed,stratify=df_train[self.event_col])
+        df_train, df_val, y_train, y_val = train_test_split(df_train, df_train[self.event_col], test_size = 0.25, random_state = seed,stratify=df_train[self.event_col])
 
         # if str_identifier not in ['gbsg']:
         x_train = self.x_mapper.fit_transform(df_train[cont_cols+binary_cols]).astype('float32')

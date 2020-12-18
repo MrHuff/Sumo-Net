@@ -31,7 +31,7 @@ def generate_job_params(directory='job_dir/'):
     }
     counter = 0
     for s in [1,2,3,4,5]:
-        for dataset in [0,1,2,3]:
+        for dataset in [3]:
             for l_type in [0,1]:
                 for net_t in ['ocean_net','survival_net']:
                     base_dict['dataset']=dataset
@@ -42,4 +42,4 @@ def generate_job_params(directory='job_dir/'):
                     counter +=1
 
 if __name__ == '__main__':
-    generate_job_params(directory='job_dir/')
+    generate_job_params(directory='job_dir_flchain/')

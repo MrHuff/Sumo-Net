@@ -226,7 +226,7 @@ class ocean_net(torch.nn.Module):
         self.net_x = self.init_covariate_net_2(d_in_x, layers_x,d_out, cat_size_list, transformation, dropout)
 
 
-        self.eps = 1e-5
+        self.eps = 1e-3
         self.direct = direct_dif
         self.objective = objective
         if self.objective in ['hazard', 'hazard_mean']:
@@ -368,6 +368,127 @@ class ocean_net(torch.nn.Module):
             h = h_xt + h_xh_t + h_t + h_x
             return 1 - h.sigmoid_()
 
+
+class cox_net(torch.nn.Module):
+    def __init__(self,
+                 d_in_x,
+                 cat_size_list,
+                 d_in_y,
+                 d_out,
+                 layers_x,
+                 layers,
+                 dropout=0.9,
+                 bounding_op=lambda x: x ** 2,
+                 transformation=torch.tanh,
+                 direct_dif=True,
+                 objective='S_mean'
+                 ):
+        super(cox_net, self).__init__()
+
+        self.bounding_op = bounding_op
+
+        self.net_t = self.init_bounded_net(d_in_y,d_out,layers,transformation,bounding_op)
+        self.net_x = self.init_covariate_net_2(d_in_x, layers_x,d_out, cat_size_list, transformation, dropout)
+
+
+        self.eps = 1e-5
+        self.direct = direct_dif
+        self.objective = objective
+        if self.objective in ['hazard', 'hazard_mean']:
+            self.f = self.forward_hazard
+            self.f_cum = self.forward_cum_hazard
+        elif self.objective in ['S', 'S_mean']:
+            self.f = self.forward_f
+            self.f_cum = self.forward_S
+
+    def init_covariate_net_2(self, d_in_x, layers_x,d_out, cat_size_list, transformation, dropout):
+        module_list = [
+            nn_node(d_in=d_in_x, d_out=layers_x[0], cat_size_list=cat_size_list, transformation=transformation,
+                    dropout=dropout)]
+        for l_i in range(1, len(layers_x)):
+            module_list.append(
+                nn_node(d_in=layers_x[l_i - 1], d_out=layers_x[l_i], cat_size_list=[], transformation=transformation,
+                        dropout=dropout))
+        module_list.append(
+            nn_node(d_in=layers_x[ -1], d_out=d_out, cat_size_list=[], transformation=transformation,
+                    dropout=dropout))
+        return multi_input_Sequential_res_net(*module_list)
+
+    def init_bounded_net(self, dx_in, d_out, layers, transformation, bounding_op):
+        # self.mixed_layer = mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], transformation=transformation, bounding_op=bounding_op,dropout=dropout)
+        module_list = [bounded_nn_layer(d_in=dx_in, d_out=layers[0], bounding_op=bounding_op,
+                                   transformation=transformation)]
+        for l_i in range(1, len(layers)):
+            module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
+                                                transformation=transformation))
+        module_list.append(
+            bounded_nn_layer(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
+        return multi_input_Sequential_res_net(*module_list)
+
+    def forward(self, x_cov, y, x_cat=[]):
+        return self.f(x_cov, y, x_cat)
+
+    def forward_cum(self, x_cov, y, mask, x_cat=[]):
+        return self.f_cum(x_cov, y, mask, x_cat)
+
+    def forward_S(self, x_cov_in, y, mask, x_cat=[]):
+        x_cov_in = x_cov_in[~mask, :]
+        y = y[~mask, :]
+        if not isinstance(x_cat, list):
+            x_cat = x_cat[~mask, :]
+        # Fix categorical business
+        h_t = self.net_t((y))
+        h_x = self.net_x((x_cov_in, x_cat))
+        h = h_t + h_x
+        return -log1plusexp(h)
+
+    def forward_f(self, x_cov_in, y, x_cat=[]):
+        h_t = self.net_t((y))
+        h_t_forward = self.net_t((y+ self.eps))
+        h_x = self.net_x((x_cov_in, x_cat))
+        h = h_t + h_x
+        F = h.sigmoid()
+
+        if self.direct:
+            F_forward = ( h_t_forward + h_x).sigmoid()
+            f = ((F_forward - F) / self.eps)
+        else:
+            diff = (h_t_forward - h)
+            f = (diff / self.eps) * F * (
+                        1 - F)  # (F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
+        return f
+
+    def forward_cum_hazard(self, x_cov_in, y, mask, x_cat=[]):
+        h_t = self.net_t((y))
+        h_x = self.net_x((x_cov_in, x_cat))
+        h =  h_t + h_x
+
+        return log1plusexp(h)
+
+    def forward_hazard(self, x_cov_in, y, x_cat=[]):
+        h_t = self.net_t((y))
+        h_t_forward = self.net_t((y+ self.eps))
+        h_x = self.net_x((x_cov_in, x_cat))
+        h =h_x + h_t
+        if self.direct:
+            h_forward = h_t_forward+h_x
+            hazard = (log1plusexp(h_forward) - log1plusexp(h)) / self.eps
+        else:
+            diff = (h_t_forward-h_t)
+            hazard = torch.sigmoid(h) * (diff / self.eps)
+        return hazard
+
+    def forward_S_eval(self, x_cov_in, y, x_cat=[]):
+
+        if self.objective in ['hazard', 'hazard_mean']:
+            S = torch.exp(-self.forward_cum_hazard(x_cov_in, y, [], x_cat))
+            return S
+
+        elif self.objective in ['S', 'S_mean']:
+            h_t = self.net_t((y))
+            h_x = self.net_x((x_cov_in, x_cat))
+            h = h_t*h_x
+            return 1 - h.sigmoid_()
 
 def get_objective(objective):
     if objective == 'hazard':

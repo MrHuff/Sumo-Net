@@ -23,16 +23,16 @@ if __name__ == '__main__':
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
         'depth_x': [1],
-        'width_x': [32],
+        'width_x': [16],
         'depth': [1],
-        'width': [32],
+        'width': [16],
         'bs': [500],
         'lr': [1e-1],
         'direct_dif': [False],
         'dropout': [0.2],
 
     }
-    for i in [2]:
+    for i in [3]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -40,7 +40,7 @@ if __name__ == '__main__':
         job_params = {
             'd_out': 1,
             'dataset_string': datasets[i],
-            'seed': 123,#,np.random.randint(0,9999),
+            'seed': 1,#,np.random.randint(0,9999),
             'eval_metric': 'train',
             'total_epochs': 500,
             'device': device,
@@ -55,6 +55,6 @@ if __name__ == '__main__':
 
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
-        training_obj.debug=True
+        training_obj.debug=False
         training_obj.run()
         training_obj.post_process()
