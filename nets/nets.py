@@ -453,7 +453,7 @@ class cox_net(torch.nn.Module):
             F_forward = ( h_t_forward + h_x).sigmoid()
             f = ((F_forward - F) / self.eps)
         else:
-            diff = (h_t_forward - h)
+            diff = (h_t_forward - h_t)
             f = (diff / self.eps) * F * (
                         1 - F)  # (F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
         return f
@@ -487,7 +487,7 @@ class cox_net(torch.nn.Module):
         elif self.objective in ['S', 'S_mean']:
             h_t = self.net_t((y))
             h_x = self.net_x((x_cov_in, x_cat))
-            h = h_t*h_x
+            h = h_t+h_x
             return 1 - h.sigmoid_()
 
 def get_objective(objective):

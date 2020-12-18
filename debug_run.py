@@ -22,9 +22,9 @@ if __name__ == '__main__':
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
-        'depth_x': [1],
+        'depth_x': [2],
         'width_x': [16],
-        'depth': [1],
+        'depth': [2],
         'width': [16],
         'bs': [500],
         'lr': [1e-1],
@@ -50,7 +50,7 @@ if __name__ == '__main__':
             'grid_size':250,
             'test_grid_size':10000,
             'validation_interval':1,
-            'net_type':'ocean_net',
+            'net_type':'cox_net',
         'objective': 'S_mean'  # S_mean
 
         }
