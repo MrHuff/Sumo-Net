@@ -113,13 +113,14 @@ class survival_net(torch.nn.Module):
                  bounding_op=lambda x: x**2,
                  transformation=torch.tanh,
                  direct_dif = True,
-                 objective = 'hazard'
+                 objective = 'hazard',
+                 eps=1e-6
                  ):
         super(survival_net, self).__init__()
         self.init_covariate_net(d_in_x,layers_x,cat_size_list,transformation,dropout)
         self.init_middle_net(dx_in=layers_x[-1], d_in_y=d_in_y, d_out=d_out, layers=layers,
                              transformation=transformation, bounding_op=bounding_op)
-        self.eps = 1e-5
+        self.eps = eps
         self.direct = direct_dif
         self.objective  = objective
         if self.objective in ['hazard','hazard_mean']:
@@ -211,7 +212,8 @@ class ocean_net(torch.nn.Module):
                  bounding_op=lambda x: x ** 2,
                  transformation=torch.tanh,
                  direct_dif=True,
-                 objective='S_mean'
+                 objective='S_mean',
+                 eps=1e-5
                  ):
         super(ocean_net, self).__init__()
 
@@ -226,7 +228,7 @@ class ocean_net(torch.nn.Module):
         self.net_x = self.init_covariate_net_2(d_in_x, layers_x,d_out, cat_size_list, transformation, dropout)
 
 
-        self.eps = 1e-3
+        self.eps = eps
         self.direct = direct_dif
         self.objective = objective
         if self.objective in ['hazard', 'hazard_mean']:
@@ -381,7 +383,8 @@ class cox_net(torch.nn.Module):
                  bounding_op=lambda x: x ** 2,
                  transformation=torch.tanh,
                  direct_dif=True,
-                 objective='S_mean'
+                 objective='S_mean',
+                 eps=1e-6
                  ):
         super(cox_net, self).__init__()
 
@@ -391,7 +394,7 @@ class cox_net(torch.nn.Module):
         self.net_x = self.init_covariate_net_2(d_in_x, layers_x,d_out, cat_size_list, transformation, dropout)
 
 
-        self.eps = 1e-5
+        self.eps = eps
         self.direct = direct_dif
         self.objective = objective
         if self.objective in ['hazard', 'hazard_mean']:

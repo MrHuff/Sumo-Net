@@ -29,16 +29,17 @@ class hyperopt_training():
         self.validation_interval = job_param['validation_interval']
         self.objective = job_param['objective']
         self.net_type = job_param['net_type']
+        self.fold_idx = job_param['fold_idx']
         self.global_hyperit = 0
         self.debug = False
         torch.cuda.set_device(self.device)
-        self.save_path = f'./{self.dataset_string}_seed={self.seed}_objective={self.objective}_{self.net_type}/'
+        self.save_path = f'./{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
         else:
             shutil.rmtree(self.save_path)
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','dropout']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps']
         self.get_hyperparameterspace(hyper_param_space)
 
     def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
@@ -57,7 +58,7 @@ class hyperopt_training():
     def __call__(self,parameters_in):
         print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
         print(parameters_in)
-        self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed)
+        self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx)
         net_init_params = {
             'd_in_x' : self.dataloader.dataset.X.shape[1],
             'cat_size_list': self.dataloader.dataset.unique_cat_cols,
@@ -69,7 +70,8 @@ class hyperopt_training():
             'layers': [parameters_in['width']]*parameters_in['depth'],
             'direct_dif':parameters_in['direct_dif'],
             'objective':self.objective,
-            'dropout':parameters_in['dropout']
+            'dropout':parameters_in['dropout'],
+            'eps':parameters_in['eps']
         }
         self.train_objective = get_objective(self.objective)
         if self.net_type=='survival_net':

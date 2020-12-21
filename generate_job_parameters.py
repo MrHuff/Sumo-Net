@@ -18,7 +18,7 @@ def generate_job_params(directory='job_dir/'):
         os.makedirs(directory)
     base_dict={
         'dataset': 0,
-        'seed':-1,
+        'seed':1337,
         'total_epochs':500,
         'patience':50,
         'hyperits':30,
@@ -27,19 +27,20 @@ def generate_job_params(directory='job_dir/'):
         'test_grid_size': 10000,
         'validation_interval':1,
         'loss_type':0,
-        'net_type':'ocean_net'
+        'net_type':'ocean_net',
+        'fold_idx': 0
     }
     counter = 0
-    for s in [1,2,3,4,5]:
-        for dataset in [3]:
+    for fold_idx in [0,1,2,3,4]:
+        for dataset in [0,1,2,3]:
             for l_type in [0,1]:
-                for net_t in ['ocean_net','survival_net']:
+                for net_t in ['ocean_net','survival_net','cox_net']:
                     base_dict['dataset']=dataset
-                    base_dict['seed']=s
                     base_dict['loss_type']=l_type
                     base_dict['net_type']=net_t
+                    base_dict['fold_idx']=fold_idx
                     save_obj(base_dict,f'job_{counter}',directory)
                     counter +=1
 
 if __name__ == '__main__':
-    generate_job_params(directory='job_dir_flchain/')
+    generate_job_params(directory='job_dir/')

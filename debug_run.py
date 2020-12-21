@@ -22,17 +22,18 @@ if __name__ == '__main__':
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
-        'depth_x': [2],
-        'width_x': [16],
-        'depth': [2],
-        'width': [16],
-        'bs': [500],
-        'lr': [1e-1],
+        'depth_x': [1],
+        'width_x': [32],
+        'depth': [1],
+        'width': [32],
+        'bs': [140],
+        'lr': [1e-2],
         'direct_dif': [False],
         'dropout': [0.2],
+        'eps':[1e-4]
 
     }
-    for i in [3]:
+    for i in [0]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -50,8 +51,9 @@ if __name__ == '__main__':
             'grid_size':250,
             'test_grid_size':10000,
             'validation_interval':1,
-            'net_type':'cox_net',
-        'objective': 'S_mean'  # S_mean
+            'net_type':'ocean_net',
+        'objective': 'S_mean',
+            'fold_idx':4
 
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)

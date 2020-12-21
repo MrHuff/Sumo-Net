@@ -7,13 +7,14 @@ from .toy_data_generation import toy_data_class
 from sklearn.preprocessing import MinMaxScaler,StandardScaler
 from sklearn_pandas import DataFrameMapper
 from sklearn.model_selection import train_test_split
+from sklearn.model_selection import StratifiedKFold
 import pandas as pd
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
 class surival_dataset(Dataset):
-    def __init__(self,str_identifier,seed=1337):
-
+    def __init__(self,str_identifier,seed=1337,fold_idx=0):
+        print('fold_idx: ', fold_idx)
         super(surival_dataset, self).__init__()
         if str_identifier=='support':
             data = support
@@ -57,18 +58,18 @@ class surival_dataset(Dataset):
             cont_cols = ['x1']
             binary_cols = []
             cat_cols = []
-        df_train = data.read_df()
-        df_train = df_train.dropna()
+        df_full = data.read_df()
+        df_full = df_full.dropna()
         if str_identifier=='kkbox':
             self.event_col = 'event'
             self.duration_col = 'duration'
-            df_train = df_train.drop(['msno'],axis=1)
+            df_full = df_full.drop(['msno'],axis=1)
         else:
             self.event_col = data.col_event
             self.duration_col = data.col_duration
         c = OrderedCategoricalLong()
         for el in cat_cols:
-            df_train[el] = c.fit_transform(df_train[el])
+            df_full[el] = c.fit_transform(df_full[el])
         standardize = [([col], MinMaxScaler()) for col in cont_cols]
         leave = [(col, None) for col in binary_cols]
         self.cat_cols = cat_cols
@@ -76,25 +77,24 @@ class surival_dataset(Dataset):
         self.duration_mapper = MinMaxScaler()
 
         if self.cat_cols:
-            self.unique_cat_cols = df_train[cat_cols].max(axis=0).tolist()
+            self.unique_cat_cols = df_full[cat_cols].max(axis=0).tolist()
             self.unique_cat_cols = [el+1 for el in self.unique_cat_cols]
             for el in cat_cols:
-                print(f'column {el}:', df_train[el].unique().tolist())
+                print(f'column {el}:', df_full[el].unique().tolist())
             print(self.unique_cat_cols)
         else:
             self.unique_cat_cols = []
 
-        df_train, df_test, y_train, y_test = train_test_split(df_train, df_train[self.event_col], test_size = 0.2, random_state = seed,stratify=df_train[self.event_col])
-        df_train, df_val, y_train, y_val = train_test_split(df_train, df_train[self.event_col], test_size = 0.25, random_state = seed,stratify=df_train[self.event_col])
+        folder = StratifiedKFold(n_splits=5,  shuffle=True, random_state=seed)
+        splits = list(folder.split(df_full,df_full[self.event_col]))
+        tr_idx,tst_idx = splits[fold_idx]
+        df_train = df_full.iloc[tr_idx,:]
+        df_test = df_full.iloc[tr_idx,:]
+        df_train, df_val, _, _ = train_test_split(df_train, df_train[self.event_col], test_size = 0.25,stratify=df_train[self.event_col])
 
-        # if str_identifier not in ['gbsg']:
         x_train = self.x_mapper.fit_transform(df_train[cont_cols+binary_cols]).astype('float32')
         x_val = self.x_mapper.transform(df_val[cont_cols+binary_cols]).astype('float32')
         x_test = self.x_mapper.transform(df_test[cont_cols+binary_cols]).astype('float32')
-        # else:
-        #     x_train =df_train[cont_cols + binary_cols].values.astype('float32')
-        #     x_val = df_val[cont_cols + binary_cols].values.astype('float32')
-        #     x_test = df_test[cont_cols + binary_cols].values.astype('float32')
 
         y_train = self.duration_mapper.fit_transform(df_train[self.duration_col].values.reshape(-1,1)).astype('float32')
         y_val = self.duration_mapper.transform(df_val[self.duration_col].values.reshape(-1,1)).astype('float32')
@@ -234,8 +234,8 @@ class custom_dataloader():
                                   batch_size=self.batch_size)
 
 
-def get_dataloader(str_identifier,bs,seed):
-    d = surival_dataset(str_identifier,seed)
+def get_dataloader(str_identifier,bs,seed,fold_idx):
+    d = surival_dataset(str_identifier,seed,fold_idx=fold_idx)
     # dat = DataLoader(dataset=d,batch_size=bs,shuffle=True,pin_memory=True)
     dat = custom_dataloader(dataset=d,batch_size=bs,shuffle=True,super_fast=False)
     return dat
