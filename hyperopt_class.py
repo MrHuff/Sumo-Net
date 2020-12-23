@@ -39,7 +39,7 @@ class hyperopt_training():
         else:
             shutil.rmtree(self.save_path)
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps']
         self.get_hyperparameterspace(hyper_param_space)
 
     def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
@@ -67,6 +67,7 @@ class hyperopt_training():
             'bounding_op':parameters_in['bounding_op'],
             'transformation':parameters_in['transformation'],
             'layers_x': [parameters_in['width_x']]*parameters_in['depth_x'],
+            'layers_t': [parameters_in['width_t']]*parameters_in['depth_t'],
             'layers': [parameters_in['width']]*parameters_in['depth'],
             'direct_dif':parameters_in['direct_dif'],
             'objective':self.objective,
@@ -82,7 +83,7 @@ class hyperopt_training():
             self.model = cox_net(**net_init_params).to(self.device)
 
         self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'])
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=2)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=25)
         results = self.full_loop()
         self.global_hyperit+=1
         results['net_init_params'] = net_init_params

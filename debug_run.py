@@ -23,10 +23,12 @@ if __name__ == '__main__':
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
         'depth_x': [1],
-        'width_x': [32],
+        'width_x': [32], #adapt for smaller time net
+        'depth_t': [2],
+        'width_t': [1], #ads
         'depth': [1],
-        'width': [32],
-        'bs': [140],
+        'width': [16],
+        'bs': [500],
         'lr': [1e-2],
         'direct_dif': [False],
         'dropout': [0.2],
@@ -41,7 +43,7 @@ if __name__ == '__main__':
         job_params = {
             'd_out': 1,
             'dataset_string': datasets[i],
-            'seed': 1,#,np.random.randint(0,9999),
+            'seed': 1337,#,np.random.randint(0,9999),
             'eval_metric': 'train',
             'total_epochs': 500,
             'device': device,
@@ -51,9 +53,9 @@ if __name__ == '__main__':
             'grid_size':250,
             'test_grid_size':10000,
             'validation_interval':1,
-            'net_type':'ocean_net',
+            'net_type':'survival_net',
         'objective': 'S_mean',
-            'fold_idx':4
+            'fold_idx':2,
 
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)

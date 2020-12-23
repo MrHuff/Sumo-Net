@@ -37,9 +37,10 @@ eval_metrics = [
 'ibs',
 'inll'
 ]
-dataset_bs =[[130,135,140,145,150],[100,250,500,1000],[100,250,500,1000],[25,50,100,250,500,1000],[500,1000,2500,5000],[250,500,1000,2500],[250,500,1000,2500],[250,500,1000,2500]]
+dataset_bs =[[25,50,100,250],[5,10,25,50,100],[5,10,25,50,100],[5,10,25,50,100],[500,1000,2500,5000],[250,500,1000,2500],[250,500,1000,2500],[250,500,1000,2500]]
 dataset_d =[[1,2],[1,2],[1,2],[1,2],[1,2,3,4],[1,2],[1,2],[1,2]]
-dataset_w =[[16,32],[8,16,32],[8,16,32],[8,16,32],[16,32,64,128],[8,16,32],[8,16,32],[8,16,32]]
+dataset_w =[[16,32],[8,16,32],[8,16,32],[8,16,32],[16,32,64,],[8,16,32],[8,16,32],[8,16,32]]
+dataset_d_t =[[1,2,3],[1,2,3],[1,2,3],[1,2,3],[1,2,3,4],[1,2],[1,2],[1,2]]
 
 loss_type = ['S_mean','hazard_mean']
 #Write serious job script, figure out post processing pipeline...
@@ -52,6 +53,7 @@ if __name__ == '__main__':
     args = load_obj(jobs[idx],folder=f'{fold}/')
     d = dataset_d[args['dataset']]
     w = dataset_w[args['dataset']]
+    d_t = dataset_d_t[args['dataset']]
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
@@ -60,11 +62,13 @@ if __name__ == '__main__':
         'width_x': w,
         'depth': d,
         'width': w,
+        'depth_t': d_t,
+        'width_t': [1],  # ads
         'bs': dataset_bs[args['dataset']],
         'lr': [1e-3,1e-2,1e-1],
         'direct_dif': [False],
         'dropout': [0.0,0.1,0.2,0.3,0.4,0.5],
-        'eps': [1e-2,1e-3,1e-4,1e-5,1e-6]
+        'eps': [1e-3,1e-4,1e-5]
     }
 
     devices = GPUtil.getAvailable(order='memory', limit=1)
@@ -82,7 +86,9 @@ if __name__ == '__main__':
         'test_grid_size': args['test_grid_size'],
         'validation_interval': args['validation_interval'],
         'net_type': args['net_type'],
-        'objective': loss_type[args['loss_type']]  # S_mean
+        'objective': loss_type[args['loss_type']],
+        'fold_idx': args['fold_idx']
+
     }
     training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
     training_obj.run()

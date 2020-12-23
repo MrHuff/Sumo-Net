@@ -88,6 +88,17 @@ class bounded_nn_layer(torch.nn.Module): #Add dropout layers
     def forward(self,X):
         return self.f(X@self.bounding_op(self.W)+self.bias)
 
+class bounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
+    def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
+        super(bounded_nn_layer_last, self).__init__()
+        self.W = torch.nn.Parameter(torch.randn(*(d_in, d_out)), requires_grad=True)
+        self.f = transformation
+        self.bounding_op = bounding_op
+        self.bias = torch.nn.Parameter(torch.randn(d_out), requires_grad=True)
+
+    def forward(self, X):
+        return X @ self.bounding_op(self.W) + self.bias
+
 class mixed_layer(torch.nn.Module): #Add dropout layers
     def __init__(self, d_in, d_in_bounded, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
         super(mixed_layer, self).__init__()
@@ -108,6 +119,7 @@ class survival_net(torch.nn.Module):
                  d_in_y,
                  d_out,
                  layers_x,
+                 layers_t,
                  layers,
                  dropout=0.9,
                  bounding_op=lambda x: x**2,
@@ -120,15 +132,28 @@ class survival_net(torch.nn.Module):
         self.init_covariate_net(d_in_x,layers_x,cat_size_list,transformation,dropout)
         self.init_middle_net(dx_in=layers_x[-1], d_in_y=d_in_y, d_out=d_out, layers=layers,
                              transformation=transformation, bounding_op=bounding_op)
+        self.net_t = self.init_bounded_net(d_in_y,d_out,layers_t,transformation,bounding_op)
         self.eps = eps
         self.direct = direct_dif
         self.objective  = objective
+
         if self.objective in ['hazard','hazard_mean']:
             self.f = self.forward_hazard
             self.f_cum = self.forward_cum_hazard
         elif self.objective in ['S','S_mean']:
             self.f=self.forward_f
             self.f_cum=self.forward_S
+
+    def init_bounded_net(self, dx_in, d_out, layers, transformation, bounding_op):
+        # self.mixed_layer = mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], transformation=transformation, bounding_op=bounding_op,dropout=dropout)
+        module_list = [bounded_nn_layer(d_in=dx_in, d_out=layers[0], bounding_op=bounding_op,
+                                        transformation=transformation)]
+        for l_i in range(1, len(layers)):
+            module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
+                                                transformation=transformation))
+        module_list.append(
+            bounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
+        return multi_input_Sequential_res_net(*module_list)
 
     def init_covariate_net(self,d_in_x,layers_x,cat_size_list,transformation,dropout):
         module_list = [nn_node(d_in=d_in_x,d_out=layers_x[0],cat_size_list=cat_size_list,transformation=transformation,dropout=dropout)]
@@ -144,7 +169,7 @@ class survival_net(torch.nn.Module):
             module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
                                                 transformation=transformation))
         module_list.append(
-            bounded_nn_layer(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
+            bounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
         self.middle_net = multi_input_Sequential_res_net(*module_list)
 
     def forward(self,x_cov,y,x_cat=[]):
@@ -160,30 +185,33 @@ class survival_net(torch.nn.Module):
             x_cat=x_cat[~mask,:]
         #Fix categorical business
         x_cov = self.covariate_net((x_cov,x_cat))
-        h = self.middle_net((x_cov, y))
+        h = self.middle_net((x_cov,self.net_t(y)))
         return -log1plusexp(h)
 
     def forward_f(self,x_cov,y,x_cat=[]):
         x_cov = self.covariate_net((x_cov,x_cat))
-        h = self.middle_net((x_cov, y))
-        h_forward = self.middle_net((x_cov, y + self.eps))
+        nt = self.net_t(y)
+        nt_plus_h = self.net_t(y+self.eps)
+        h = self.middle_net((x_cov, nt))
+        h_forward = self.middle_net((x_cov, nt_plus_h))
         F = h.sigmoid()
         if self.direct:
             F_forward = h_forward.sigmoid()
             f = ((F_forward - F) / self.eps)
         else:
-            f = ((h_forward - h) / self.eps)*F*(1-F) #(F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
+            dh = (h_forward - h) /self.eps
+            f =dh*F*(1-F) #(F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
         return f
 
     def forward_cum_hazard(self, x_cov, y, mask,x_cat=[]):
         x_cov = self.covariate_net((x_cov,x_cat))
-        h = self.middle_net((x_cov, y))
+        h = self.middle_net((x_cov, self.net_t(y)))
         return log1plusexp(h)
 
     def forward_hazard(self, x_cov, y,x_cat=[]):
         x_cov = self.covariate_net((x_cov,x_cat))
-        h = self.middle_net((x_cov, y))
-        h_forward = self.middle_net((x_cov, y + self.eps))
+        h = self.middle_net((x_cov, self.net_t(y)))
+        h_forward = self.middle_net((x_cov, self.net_t(y+self.eps)))
         if self.direct:
             hazard = (log1plusexp(h_forward) - log1plusexp(h)) / self.eps
         else:
@@ -196,7 +224,7 @@ class survival_net(torch.nn.Module):
             return S
         elif self.objective in ['S','S_mean']:
             x_cov = self.covariate_net((x_cov,x_cat))
-            h = self.middle_net((x_cov, y))
+            h = self.middle_net((x_cov, self.net_t(y)))
             return 1-h.sigmoid_()
 
 
@@ -207,6 +235,7 @@ class ocean_net(torch.nn.Module):
                  d_in_y,
                  d_out,
                  layers_x,
+                 layers_t,
                  layers,
                  dropout=0.9,
                  bounding_op=lambda x: x ** 2,
@@ -221,12 +250,13 @@ class ocean_net(torch.nn.Module):
         self.covariate_net = self.init_covariate_net(d_in_x, layers_x, cat_size_list, transformation, dropout)
         self.middle_net = self.init_middle_net(dx_in=layers_x[-1], d_in_y=d_in_y, d_out=d_out, layers=layers,
                              transformation=transformation, bounding_op=bounding_op)
-        self.prod_net_t = self.init_bounded_net(d_in_y,d_out,layers,transformation,bounding_op)
+        self.prod_net_t = self.init_bounded_net(d_in_y,d_out,layers_t,transformation,bounding_op)
         self.prod_net_x = self.init_covariate_net_2(d_in_x, layers_x,d_out, cat_size_list, transformation, dropout)
 
-        self.net_t = self.init_bounded_net(d_in_y,d_out,layers,transformation,bounding_op)
+        self.net_t = self.init_bounded_net(d_in_y,d_out,layers_t,transformation,bounding_op)
         self.net_x = self.init_covariate_net_2(d_in_x, layers_x,d_out, cat_size_list, transformation, dropout)
 
+        self.net_t_pre = self.init_bounded_net(d_in_y,d_out,layers_t,transformation,bounding_op)
 
         self.eps = eps
         self.direct = direct_dif
@@ -269,7 +299,7 @@ class ocean_net(torch.nn.Module):
             module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
                                                 transformation=transformation))
         module_list.append(
-            bounded_nn_layer(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
+            bounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
         return multi_input_Sequential_res_net(*module_list)
 
     def init_bounded_net(self, dx_in, d_out, layers, transformation, bounding_op):
@@ -280,7 +310,7 @@ class ocean_net(torch.nn.Module):
             module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
                                                 transformation=transformation))
         module_list.append(
-            bounded_nn_layer(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
+            bounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
         return multi_input_Sequential_res_net(*module_list)
 
     def forward(self, x_cov, y, x_cat=[]):
@@ -296,17 +326,17 @@ class ocean_net(torch.nn.Module):
             x_cat = x_cat[~mask, :]
         # Fix categorical business
         x_cov = self.covariate_net((x_cov_in, x_cat))
-        h_xt = self.middle_net((x_cov, y))
-        h_xh_t = self.prod_net_t((y))* self.bounding_op(self.prod_net_x((x_cov_in, x_cat)))
-        h_t = self.net_t((y))
+        h_xt = self.middle_net((x_cov, self.net_t_pre(y)))
+        h_xh_t = self.prod_net_t(y)* self.bounding_op(self.prod_net_x((x_cov_in, x_cat)))
+        h_t = self.net_t(y)
         h_x = self.net_x((x_cov_in, x_cat))
         h = h_xh_t + h_t + h_x +h_xt
         return -log1plusexp(h)
 
     def forward_f(self, x_cov_in, y, x_cat=[]):
         x_cov = self.covariate_net((x_cov_in, x_cat))
-        h_xt = self.middle_net((x_cov, y))
-        h_xt_forward = self.middle_net((x_cov, y + self.eps))
+        h_xt = self.middle_net((x_cov, self.net_t_pre(y)))
+        h_xt_forward = self.middle_net((x_cov, self.net_t_pre(y + self.eps)))
         h_t = self.net_t((y))
         h_t_forward = self.net_t((y+ self.eps))
         prod_x = self.bounding_op(self.prod_net_x((x_cov_in, x_cat)))
@@ -327,9 +357,9 @@ class ocean_net(torch.nn.Module):
 
     def forward_cum_hazard(self, x_cov_in, y, mask, x_cat=[]):
         x_cov = self.covariate_net((x_cov_in, x_cat))
-        h_xt = self.middle_net((x_cov, y))
-        h_xh_t = self.prod_net_t((y))*self.bounding_op(self.prod_net_x((x_cov_in, x_cat)))
-        h_t = self.net_t((y))
+        h_xt = self.middle_net((x_cov, self.net_t_pre(y)))
+        h_xh_t = self.prod_net_t(y)*self.bounding_op(self.prod_net_x((x_cov_in, x_cat)))
+        h_t = self.net_t(y)
         h_x = self.net_x((x_cov_in, x_cat))
         h = h_xt + h_xh_t + h_t + h_x
 
@@ -337,8 +367,8 @@ class ocean_net(torch.nn.Module):
 
     def forward_hazard(self, x_cov_in, y, x_cat=[]):
         x_cov = self.covariate_net((x_cov_in, x_cat))
-        h_xt = self.middle_net((x_cov, y))
-        h_xt_forward = self.middle_net((x_cov, y + self.eps))
+        h_xt = self.middle_net((x_cov,  self.net_t_pre(y)))
+        h_xt_forward = self.middle_net((x_cov, self.net_t_pre(y + self.eps)))
         h_t = self.net_t((y))
         h_t_forward = self.net_t((y+ self.eps))
         prod_x =self.bounding_op(self.prod_net_x((x_cov_in, x_cat)))
@@ -363,7 +393,7 @@ class ocean_net(torch.nn.Module):
 
         elif self.objective in ['S', 'S_mean']:
             x_cov = self.covariate_net((x_cov_in, x_cat))
-            h_xt = self.middle_net((x_cov, y))
+            h_xt = self.middle_net((x_cov,  self.net_t_pre(y)))
             h_xh_t = self.prod_net_t((y)) * self.bounding_op(self.prod_net_x((x_cov_in, x_cat)))
             h_t = self.net_t((y))
             h_x = self.net_x((x_cov_in, x_cat))
