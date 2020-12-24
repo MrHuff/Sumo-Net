@@ -89,7 +89,7 @@ class surival_dataset(Dataset):
         splits = list(folder.split(df_full,df_full[self.event_col]))
         tr_idx,tst_idx = splits[fold_idx]
         df_train = df_full.iloc[tr_idx,:]
-        df_test = df_full.iloc[tr_idx,:]
+        df_test = df_full.iloc[tst_idx,:]
         df_train, df_val, _, _ = train_test_split(df_train, df_train[self.event_col], test_size = 0.25,stratify=df_train[self.event_col])
 
         x_train = self.x_mapper.fit_transform(df_train[cont_cols+binary_cols]).astype('float32')

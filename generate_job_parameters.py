@@ -23,12 +23,13 @@ def generate_job_params(directory='job_dir/'):
         'patience':50,
         'hyperits':30,
         'eval_metric':0,
-        'grid_size':1000,
-        'test_grid_size': 10000,
+        'grid_size':100,
+        'test_grid_size': 100,
         'validation_interval':1,
         'loss_type':0,
         'net_type':'ocean_net',
         'fold_idx': 0,
+        'savedir':'100_gridsize'
     }
     counter = 0
     for fold_idx in [0,1,2,3,4]:
@@ -44,4 +45,4 @@ def generate_job_params(directory='job_dir/'):
                     counter +=1
 
 if __name__ == '__main__':
-    generate_job_params(directory='job_dir/')
+    generate_job_params(directory='job_dir_100grid/')

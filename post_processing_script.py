@@ -70,10 +70,6 @@ if __name__ == '__main__':
                 row = row + desc_df
                 df.append(row)
     all_jobs = pd.DataFrame(df,columns=cols)
-    print(all_jobs)
-    all_jobs.to_csv('all_jobs.csv')
-    print(all_jobs.to_latex())
-
     piv_df  = pd.DataFrame()
     piv_df['Method'] = all_jobs['objective'].apply(lambda x: x.replace('_','-')) +': '+ all_jobs['model'].apply(lambda x: x.replace('_','-'))
     piv_df['dataset'] = all_jobs['dataset'].apply(lambda x: x.upper())
@@ -83,10 +79,11 @@ if __name__ == '__main__':
         piv_df[new_crit] = '$'+ all_jobs[mean_col].astype(str)+'\pm '+ all_jobs[std_col].astype(str)+'$'
     piv_df = piv_df.append(tab)
 
-    test = pd.pivot(piv_df,index='Method',columns='dataset')
-    print(test)
-    print(test.to_latex(escape=False))
+    final_ = pd.pivot(piv_df,index='Method',columns='dataset')
 
+    print(final_)
+    print(final_.to_latex(buf="first_correct_it_4_datasets.tex",escape=False))
+    final_.to_csv("first_correct_it_4_datasets.csv")
 
 
 

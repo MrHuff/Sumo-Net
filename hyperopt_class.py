@@ -30,16 +30,17 @@ class hyperopt_training():
         self.objective = job_param['objective']
         self.net_type = job_param['net_type']
         self.fold_idx = job_param['fold_idx']
+        self.savedir = job_param['savedir']
         self.global_hyperit = 0
         self.debug = False
         torch.cuda.set_device(self.device)
-        self.save_path = f'./{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
+        self.save_path = f'./{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
         else:
             shutil.rmtree(self.save_path)
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay']
         self.get_hyperparameterspace(hyper_param_space)
 
     def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
@@ -82,7 +83,7 @@ class hyperopt_training():
         elif self.net_type=='cox_net':
             self.model = cox_net(**net_init_params).to(self.device)
 
-        self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'])
+        self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=25)
         results = self.full_loop()
         self.global_hyperit+=1
@@ -117,6 +118,69 @@ class hyperopt_training():
             self.optimizer.step()
             total_loss_train+=loss.detach()
         return total_loss_train.item()/(i+1)
+
+    def eval_loop_kkbox(self,grid_size):
+        S_series_container = []
+        S_log = []
+        f_log = []
+        durations = []
+        events = []
+        self.model = self.model.eval()
+        # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
+        # events  = self.dataloader.dataset.delta.numpy()
+        chunks = self.dataloader.batch_size // 50 + 1
+        with torch.no_grad():
+            t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
+                                    grid_size)
+            time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
+            for i, (X, x_cat, y, delta) in enumerate(self.dataloader):
+                X = X.to(self.device)
+                y = y.to(self.device)
+                delta = delta.to(self.device)
+                mask = delta == 1
+                X_f = X[mask, :]
+                y_f = y[mask, :]
+                if not isinstance(x_cat, list):
+                    x_cat = x_cat.to(self.device)
+                    x_cat_f = x_cat[mask, :]
+                else:
+                    x_cat_f = []
+                S = self.model.forward_cum(X, y, mask, x_cat)
+                f = self.model(X_f, y_f, x_cat_f)
+                S_log.append(S)
+                f_log.append(f)
+                if i*self.dataloader.batch_size<25000:
+                    if not isinstance(x_cat, list):
+                        for chk, chk_cat in zip(torch.chunk(X, chunks), torch.chunk(x_cat, chunks)):
+                            input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                            X_repeat = chk.repeat_interleave(grid_size, 0)
+                            x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
+                            S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                            S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                    else:
+                        x_cat_repeat = []
+                        for chk in torch.chunk(X, chunks):
+                            input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                            X_repeat = chk.repeat_interleave(grid_size, 0)
+                            S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                            S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                    durations.append(y.cpu().numpy())
+                    events.append(delta.cpu().numpy())
+            durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
+            # durations = np.concatenate(durations).squeeze()
+            events = np.concatenate(events).squeeze()
+
+            S_log = torch.cat(S_log)
+            f_log = torch.cat(f_log)
+            # reshape(-1, 1)).squeeze()
+            S_series_container = pd.DataFrame(torch.cat(S_series_container, 1).numpy())
+            t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
+            S_series_container = S_series_container.set_index(t_grid_np)
+            # S_series_container=S_series_container.set_index(t_grid_np)
+            val_likelihood, conc, ibs, inll = self.calc_eval_objective(S_log, f_log, S_series_container,
+                                                                       durations=durations, events=events,
+                                                                       time_grid=t_grid_np)
+        return val_likelihood.item(), conc, ibs, inll
 
     def eval_loop(self,grid_size):
         S_series_container = []
@@ -164,8 +228,6 @@ class hyperopt_training():
                 f_log.append(f)
                 durations.append(y.cpu().numpy())
                 events.append(delta.cpu().numpy())
-                if i*self.dataloader.batch_size>25000:
-                    break
             durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
             #durations = np.concatenate(durations).squeeze()
             events = np.concatenate(events).squeeze()
@@ -182,12 +244,14 @@ class hyperopt_training():
 
     def validation_score(self):
         self.dataloader.dataset.set(mode='val')
-        return self.eval_loop(self.grid_size)
+        if self.dataset_string=='kkbox':
+            return self.eval_loop_kkbox(self.grid_size)
+        else:
+            return self.eval_loop(self.grid_size)
 
     def test_score(self):
         self.dataloader.dataset.set(mode='test')
-        return self.eval_loop(self.test_grid_size)
-
+        return self.eval_loop(self.grid_size)
     def dump_model(self):
         torch.save(self.model.state_dict(), self.save_path + f'best_model_{self.global_hyperit}.pt')
 
@@ -226,6 +290,9 @@ class hyperopt_training():
                 elif self.selection_criteria == 'inll':
                     criteria = inll  # maximize
                 print('criteria score: ', criteria)
+                print('val conc',conc)
+                print('val ibs',ibs)
+                print('val inll',inll)
                 if criteria<best:
                     best = criteria
                     print('new best val score: ',best)
