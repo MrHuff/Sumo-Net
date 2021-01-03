@@ -21,7 +21,7 @@ def generate_job_params(directory='job_dir/'):
         'seed':1337,
         'total_epochs':500,
         'patience':25,
-        'hyperits':30,
+        'hyperits':20,
         'eval_metric':2,
         'grid_size':100,
         'test_grid_size': 100,
@@ -33,7 +33,7 @@ def generate_job_params(directory='job_dir/'):
     }
     counter = 0
     for fold_idx in [0,1,2,3,4]:
-        for dataset in [0,1,2,3]:
+        for dataset in [4]:
             for l_type in [0,1]:
                 for net_t in ['survival_net_basic']:
                     base_dict['dataset']=dataset
@@ -44,4 +44,4 @@ def generate_job_params(directory='job_dir/'):
                     counter +=1
 
 if __name__ == '__main__':
-    generate_job_params(directory='job_dir_basic_ibs/')
+    generate_job_params(directory='job_dir_kkbox_basic_ibs/')

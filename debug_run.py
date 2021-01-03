@@ -22,18 +22,18 @@ if __name__ == '__main__':
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
-        'depth_x': [3],
+        'depth_x': [8],
         'width_x': [32], #adapt for smaller time net
         'depth_t': [2],
         'width_t': [1], #ads
         'depth': [1],
-        'width': [16],
-        'bs': [500],
+        'width': [32],
+        'bs': [5000],
         'lr': [1e-2],
         'direct_dif': [False],
-        'dropout': [0.2],
+        'dropout': [0.5],
         'eps':[1e-4],
-        'weight_decay':[1e-1]
+        'weight_decay':[0]
 
     }
     for i in [4]:
@@ -61,6 +61,6 @@ if __name__ == '__main__':
 
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
-        training_obj.debug=True
+        training_obj.debug=False
         training_obj.run()
         training_obj.post_process()

@@ -37,10 +37,12 @@ eval_metrics = [
 'ibs',
 'inll'
 ]
-dataset_bs =[[25,50,100,250],[5,10,25,50,100],[5,10,25,50,100],[5,10,25,50,100],[250,500,1000,2500,5000],[250,500,1000,2500],[250,500,1000,2500],[250,500,1000,2500]]
-dataset_d =[[1,2],[1,2],[1,2],[1,2],[1,2,3,4],[1,2],[1,2],[1,2]]
-dataset_w =[[16,32],[8,16,32],[8,16,32],[8,16,32],[16,32,64,128],[8,16,32],[8,16,32],[8,16,32]]
-dataset_d_t =[[1,2,3],[1,2,3],[1,2,3],[1,2,3],[1,2,3,4,5],[1,2],[1,2],[1,2]]
+dataset_bs =[[25,50,100,250],[5,10,25,50,100],[5,10,25,50,100],[5,10,25,50,100],[1000,2500,5000],[250,500,1000,2500],[250,500,1000,2500],[250,500,1000,2500]]
+dataset_d_x =[[1, 2], [1, 2], [1, 2], [1, 2], [4, 6, 8], [1, 2], [1, 2], [1, 2]]
+dataset_d =[[1, 2], [1, 2], [1, 2], [1, 2], [1,2], [1, 2], [1, 2], [1, 2]]
+dataset_w_x =[[16, 32], [8, 16, 32], [8, 16, 32], [8, 16, 32], [128, 256, 512], [8, 16, 32], [8, 16, 32], [8, 16, 32]]
+dataset_w =[[16, 32], [8, 16, 32], [8, 16, 32], [8, 16, 32], [8,16,32], [8, 16, 32], [8, 16, 32], [8, 16, 32]]
+dataset_d_t =[[1,2,3],[1,2,3],[1,2,3],[1,2,3],[4,6,8],[1,2],[1,2],[1,2]]
 
 loss_type = ['S_mean','hazard_mean']
 #Write serious job script, figure out post processing pipeline...
@@ -51,6 +53,8 @@ if __name__ == '__main__':
     jobs = os.listdir(fold)
     jobs.sort()
     args = load_obj(jobs[idx],folder=f'{fold}/')
+    d_x = dataset_d_x[args['dataset']]
+    w_x = dataset_w_x[args['dataset']]
     d = dataset_d[args['dataset']]
     w = dataset_w[args['dataset']]
     d_t = dataset_d_t[args['dataset']]
@@ -58,17 +62,17 @@ if __name__ == '__main__':
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
-        'depth_x': d,
-        'width_x': w,
+        'depth_x': d_x,
+        'width_x': w_x,
         'depth': d,
         'width': w,
         'depth_t': d_t,
         'width_t': [1],  # ads
         'bs': dataset_bs[args['dataset']],
-        'lr': [1e-3,1e-2,1e-1],
+        'lr': [1e-2,1e-1],
         'direct_dif': [False],
         'dropout': [0.0,0.1,0.2,0.3,0.4,0.5],
-        'eps': [1e-3,1e-4,1e-5],
+        'eps': [1e-3,1e-4],
         'weight_decay': [1e-3,1e-4,1e-2,0.1,0]
 
     }

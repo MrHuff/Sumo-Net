@@ -3,15 +3,18 @@ from astropy.table import Table
 tab1 = Table.read('kvamme_conc.tex').to_pandas()
 tab2 = Table.read('kvamme_ibs.tex').to_pandas()
 tab3 = Table.read('kvamme_inll.tex').to_pandas()
+tab4 = Table.read('kvamme_kkbox.tex').to_pandas()
+tab4['dataset'] = 'KKBOX'
 tab1 = tab1.melt(id_vars=['Method'])
 tab2 = tab2.melt(id_vars=['Method'])
 tab3 = tab3.melt(id_vars=['Method'])
 tab = pd.DataFrame()
 tab['Method'] = tab1['Method']
 tab['dataset'] = tab1['variable']
-tab['concordance'] = tab1['value']
-tab['ibs'] = tab2['value']
-tab['inll'] = tab3['value']
+tab[r'$C^\text{td}$'] = tab1['value']
+tab['IBS'] = tab2['value']
+tab['IBLL'] = tab3['value']
+tab = tab.append(tab4)
 print(tab)
 # def post_processing_parser():
 #     parser = argparse.ArgumentParser()
@@ -35,11 +38,12 @@ def get_best_params(path,selection_criteria):
 
 
 if __name__ == '__main__':
-    folder = 'concordance_eval'
+    folder = 'ibs_eval'
     objective = ['S_mean','hazard_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
     model = ['survival_net']
-    c = criteria[0]
+    result_name = 'survival_net_ibs_eval'
+    c = criteria[2]
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
         cols.append(criteria_name+'_mean')
@@ -47,7 +51,7 @@ if __name__ == '__main__':
     df = []
     for o in objective:
         for net_type in model:
-            for d in [0,1,2,3]:
+            for d in [0,1,2,3,4]:
                 d_str = datasets[d]
                 row = [o,net_type,d_str]
                 desc_df = []
@@ -74,7 +78,7 @@ if __name__ == '__main__':
     piv_df  = pd.DataFrame()
     piv_df['Method'] = all_jobs['objective'].apply(lambda x: x.replace('_','-')) +': '+ all_jobs['model'].apply(lambda x: x.replace('_','-'))
     piv_df['dataset'] = all_jobs['dataset'].apply(lambda x: x.upper())
-    for crit,new_crit in zip(criteria[1:],['concordance','ibs','inll']):
+    for crit,new_crit in zip(criteria[1:],[r'$C^\text{td}$','IBS','IBLL']):
         mean_col = crit+'_mean'
         std_col = crit+'_std'
         piv_df[new_crit] = '$'+ all_jobs[mean_col].astype(str)+'\pm '+ all_jobs[std_col].astype(str)+'$'
@@ -83,8 +87,8 @@ if __name__ == '__main__':
     final_ = pd.pivot(piv_df,index='Method',columns='dataset')
 
     print(final_)
-    print(final_.to_latex(buf="concordance_eval.tex",escape=False))
-    final_.to_csv("concordance_eval.csv")
+    print(final_.to_latex(buf=f"{result_name}.tex",escape=False))
+    final_.to_csv(f"{result_name}.csv")
 
 
 

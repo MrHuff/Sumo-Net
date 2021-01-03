@@ -182,6 +182,9 @@ class chunk_iterator():
         # End of Iteration
         raise StopIteration
 
+    def __len__(self):
+        return len(self.it_X)
+
 class super_fast_iterator():
     def __init__(self,X,delta,y,cat_X,batch_size):
         self.X = X
@@ -218,6 +221,8 @@ class custom_dataloader():
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.super_fast = super_fast
+        self.n = self.dataset.X.shape[0]
+        self.len=self.n//batch_size+1
     def __iter__(self):
         if self.super_fast:
             return super_fast_iterator(X =self.dataset.X,
@@ -232,7 +237,10 @@ class custom_dataloader():
                                   cat_X = self.dataset.cat_X,
                                   shuffle = self.shuffle,
                                   batch_size=self.batch_size)
-
+    def __len__(self):
+        self.n = self.dataset.X.shape[0]
+        self.len = self.n // self.batch_size + 1
+        return self.len
 
 def get_dataloader(str_identifier,bs,seed,fold_idx):
     d = surival_dataset(str_identifier,seed,fold_idx=fold_idx)

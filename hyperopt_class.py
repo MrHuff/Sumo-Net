@@ -10,7 +10,7 @@ import pandas as pd
 import shutil
 from torch.utils.tensorboard import SummaryWriter
 from RAdam.radam import RAdam
-
+from tqdm import tqdm
 def square(x):
     return x**2
 
@@ -86,7 +86,7 @@ class hyperopt_training():
             self.model = cox_net(**net_init_params).to(self.device)
 
         self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=10)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=10,min_lr=1e-4,factor=0.5)
         results = self.full_loop()
         self.global_hyperit+=1
         results['net_init_params'] = net_init_params
@@ -100,7 +100,7 @@ class hyperopt_training():
         self.dataloader.dataset.set(mode='train')
         total_loss_train=0
         self.model = self.model.train()
-        for i,(X,x_cat,y,delta) in enumerate(self.dataloader):
+        for i,(X,x_cat,y,delta) in enumerate(tqdm(self.dataloader)):
             X = X.to(self.device)
             y = y.to(self.device)
             delta = delta.to(self.device)
@@ -135,7 +135,7 @@ class hyperopt_training():
             t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                     grid_size)
             time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-            for i, (X, x_cat, y, delta) in enumerate(self.dataloader):
+            for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
                 X = X.to(self.device)
                 y = y.to(self.device)
                 delta = delta.to(self.device)
@@ -151,7 +151,7 @@ class hyperopt_training():
                 f = self.model(X_f, y_f, x_cat_f)
                 S_log.append(S)
                 f_log.append(f)
-                if i*self.dataloader.batch_size<25000:
+                if i*self.dataloader.batch_size<50000:
                     if not isinstance(x_cat, list):
                         for chk, chk_cat in zip(torch.chunk(X, chunks), torch.chunk(x_cat, chunks)):
                             input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
@@ -198,7 +198,7 @@ class hyperopt_training():
             t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                     grid_size)
             time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-            for i,(X,x_cat,y,delta) in enumerate(self.dataloader):
+            for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
                 X = X.to(self.device)
                 y = y.to(self.device)
                 delta = delta.to(self.device)
