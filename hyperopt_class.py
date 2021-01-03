@@ -46,7 +46,7 @@ class hyperopt_training():
     def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
         val_likelihood = self.train_objective(S,f)
         eval_obj = EvalSurv(surv=S_extended,durations=durations,events=events,censor_surv='km') #Add index and pass as DF
-        conc = eval_obj.concordance_td()
+        conc = eval_obj.concordance_td('antolini')
         ibs = eval_obj.integrated_brier_score(time_grid)
         inll = eval_obj.integrated_nbll(time_grid)
         return val_likelihood,conc,ibs,inll
@@ -78,13 +78,15 @@ class hyperopt_training():
         self.train_objective = get_objective(self.objective)
         if self.net_type=='survival_net':
             self.model = survival_net(**net_init_params).to(self.device)
+        elif self.net_type=='survival_net_basic':
+            self.model = survival_net(**net_init_params).to(self.device)
         elif self.net_type=='ocean_net':
             self.model = ocean_net(**net_init_params).to(self.device)
         elif self.net_type=='cox_net':
             self.model = cox_net(**net_init_params).to(self.device)
 
         self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=25)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=10)
         results = self.full_loop()
         self.global_hyperit+=1
         results['net_init_params'] = net_init_params
@@ -271,6 +273,7 @@ class hyperopt_training():
                 val_likelihood,conc,ibs,inll = self.validation_score()
                 if self.debug:
                     test_likelihood, test_conc, test_ibs, test_inll = self.test_score()
+
                     writer.add_scalar('Loss/train', training_loss, i)
                     writer.add_scalar('Loss/val', val_likelihood, i)
                     writer.add_scalar('Loss/test', test_likelihood, i)
@@ -280,6 +283,8 @@ class hyperopt_training():
                     writer.add_scalar('ibs/test', test_ibs, i)
                     writer.add_scalar('inll/val', inll,i)
                     writer.add_scalar('inll/test',test_inll, i)
+                    print('test:', test_likelihood, test_conc, test_ibs ,test_inll)
+
                 self.scheduler.step(val_likelihood)
                 if self.selection_criteria == 'train':
                     criteria = val_likelihood  # minimize #
@@ -326,6 +331,10 @@ class hyperopt_training():
                  'test_conc':test_conc,
                  'test_ibs':test_ibs,
                  'test_inll':test_inll,
+                'val_loglikelihood': val_likelihood,
+                'val_conc': val_conc,
+                'val_ibs': val_ibs,
+                'val_inll': val_inll,
                 }
 
 
@@ -356,8 +365,10 @@ class hyperopt_training():
         elif self.selection_criteria == 'inll':
             reverse = False
         best_trial = sorted(trials.results, key=lambda x: x['test_loss'], reverse=reverse)[0] #low to high
-        data = [best_trial['test_loglikelihood'],best_trial['test_conc'],best_trial['test_ibs'],best_trial['test_inll']]
-        df = pd.DataFrame([data],columns=['test_loglikelihood','test_conc','test_ibs','test_inll'])
+        data = [best_trial['test_loglikelihood'],best_trial['test_conc'],best_trial['test_ibs'],best_trial['test_inll'],
+                best_trial['val_loglikelihood'],best_trial['val_conc'],best_trial['val_ibs'],best_trial['val_inll']]
+        df = pd.DataFrame([data],columns=['test_loglikelihood','test_conc','test_ibs','test_inll',
+                                          'val_loglikelihood','val_conc','val_ibs','val_inll'])
         df.to_csv(self.save_path+'best_results.csv',index_label=False)
 
 

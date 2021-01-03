@@ -13,7 +13,7 @@ import pandas as pd
 if __name__ == '__main__':
 
     for toy_dat in [5,6,7]:
-        net = MLPVanillaCoxTime(in_features=1,num_nodes=[64,64,64,64],batch_norm=True,dropout=0.1)
+        net = MLPVanillaCoxTime(in_features=1,num_nodes=[32],batch_norm=False,dropout=0.2)
         if toy_dat==5:
             test_X = torch.Tensor([[0], [0.3], [1.0]]).cuda()
             str_name = 'weibull'

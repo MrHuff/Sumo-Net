@@ -35,10 +35,11 @@ def get_best_params(path,selection_criteria):
 
 
 if __name__ == '__main__':
+    folder = 'concordance_eval'
     objective = ['S_mean','hazard_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
     model = ['survival_net']
-    c = criteria[2]
+    c = criteria[0]
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
         cols.append(criteria_name+'_mean')
@@ -54,7 +55,7 @@ if __name__ == '__main__':
                     for f_idx in [0,1,2,3,4]:
 
                     # get_best_params(f'./{d_str}_{s}/hyperopt_database.p',c)
-                        vals = get_best_params(f'./{d_str}_seed={s}_fold_idx={f_idx}_objective={o}_{net_type}/hyperopt_database.p',c)
+                        vals = get_best_params(f'./{folder}/{d_str}_seed={s}_fold_idx={f_idx}_objective={o}_{net_type}/hyperopt_database.p',c)
                         desc_df.append(vals)
                 tmp = pd.DataFrame(desc_df,columns =criteria)
                 tmp = tmp.describe()
@@ -82,8 +83,8 @@ if __name__ == '__main__':
     final_ = pd.pivot(piv_df,index='Method',columns='dataset')
 
     print(final_)
-    print(final_.to_latex(buf="first_correct_it_4_datasets.tex",escape=False))
-    final_.to_csv("first_correct_it_4_datasets.csv")
+    print(final_.to_latex(buf="concordance_eval.tex",escape=False))
+    final_.to_csv("concordance_eval.csv")
 
 
 
