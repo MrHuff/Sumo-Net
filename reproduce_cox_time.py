@@ -7,8 +7,9 @@ import torch
 import torchtuples as tt
 
 from pycox.datasets import metabric
-from pycox.models import CoxCC
+from pycox.models import CoxCC,CoxPH,CoxTime
 from pycox.evaluation import EvalSurv
+from pycox.models.cox_time import MLPVanillaCoxTime
 
 
 np.random.seed(1234)
@@ -35,9 +36,11 @@ x_val = x_mapper.transform(df_val).astype('float32')
 x_test = x_mapper.transform(df_test).astype('float32')
 
 
+
+labtrans = CoxTime.label_transform()
 get_target = lambda df: (df['duration'].values, df['event'].values)
-y_train = get_target(df_train)
-y_val = get_target(df_val)
+y_train = labtrans.fit_transform(*get_target(df_train))
+y_val = labtrans.transform(*get_target(df_val))
 durations_test, events_test = get_target(df_test)
 val = tt.tuplefy(x_val, y_val)
 
@@ -48,10 +51,10 @@ batch_norm = True
 dropout = 0.1
 output_bias = False
 
-net = tt.practical.MLPVanilla(in_features, num_nodes, out_features, batch_norm,
-                              dropout, output_bias=output_bias)
-
-model = CoxCC(net, tt.optim.Adam)
+# net = tt.practical.MLPVanilla(in_features, num_nodes, out_features, batch_norm,
+#                               dropout, output_bias=output_bias)
+net = MLPVanillaCoxTime(in_features, num_nodes, batch_norm, dropout)
+model = CoxTime(net, tt.optim.Adam,labtrans=labtrans)
 model.optimizer.set_lr(0.01)
 epochs = 512
 callbacks = [tt.callbacks.EarlyStopping()]

@@ -190,7 +190,7 @@ class hyperopt_training():
         f_log = []
         durations = []
         events = []
-        self.model = self.model.eval()
+        # self.model = self.model.eval()
         # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
         # events  = self.dataloader.dataset.delta.numpy()
         chunks = self.dataloader.batch_size//50+1

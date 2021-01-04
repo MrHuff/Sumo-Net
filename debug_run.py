@@ -22,21 +22,21 @@ if __name__ == '__main__':
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
-        'depth_x': [8],
+        'depth_x': [2],
         'width_x': [32], #adapt for smaller time net
         'depth_t': [2],
         'width_t': [1], #ads
-        'depth': [1],
+        'depth': [2],
         'width': [32],
-        'bs': [5000],
+        'bs': [250],
         'lr': [1e-2],
         'direct_dif': [False],
-        'dropout': [0.5],
+        'dropout': [0.25],
         'eps':[1e-4],
         'weight_decay':[0]
 
     }
-    for i in [4]:
+    for i in [1]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -46,7 +46,7 @@ if __name__ == '__main__':
             'dataset_string': datasets[i],
             'seed': 1337,#,np.random.randint(0,9999),
             'eval_metric': 'train',
-            'total_epochs': 500,
+            'total_epochs': 5000,
             'device': device,
             'patience': 50,
             'hyperits': 1,
@@ -61,6 +61,6 @@ if __name__ == '__main__':
 
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
-        training_obj.debug=False
+        training_obj.debug=True
         training_obj.run()
         training_obj.post_process()

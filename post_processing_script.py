@@ -21,8 +21,8 @@ print(tab)
 #     parser.add_argument('--dataset', type=int, nargs='?', default=-1, help='which dataset to run')
 #     parser.add_argument('--seeds', type=int, nargs='?', help='selects the seed to split the data on')
 #     return parser
-
-def get_best_params(path,selection_criteria):
+# Finish analysis tmrw!
+def get_best_params(path,selection_criteria,fold_nr):
     if selection_criteria == 'test_loglikelihood':
         reverse = False
     elif selection_criteria == 'test_conc':
