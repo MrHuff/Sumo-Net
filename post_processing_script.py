@@ -22,7 +22,7 @@ print(tab)
 #     parser.add_argument('--seeds', type=int, nargs='?', help='selects the seed to split the data on')
 #     return parser
 # Finish analysis tmrw!
-def get_best_params(path,selection_criteria,fold_nr):
+def get_best_params(path,selection_criteria):
     if selection_criteria == 'test_loglikelihood':
         reverse = False
     elif selection_criteria == 'test_conc':
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     folder = 'ibs_eval'
     objective = ['S_mean','hazard_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
-    model = ['survival_net']
+    model = ['survival_net_basic']
     result_name = 'survival_net_ibs_eval'
     c = criteria[2]
     cols = ['objective','model','dataset']

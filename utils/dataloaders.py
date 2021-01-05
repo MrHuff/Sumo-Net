@@ -9,9 +9,30 @@ from sklearn_pandas import DataFrameMapper
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedKFold
 import pandas as pd
+from sklearn.base import BaseEstimator, TransformerMixin
+
+
+class IdentityTransformer(BaseEstimator, TransformerMixin): #Scaling is already good. This leaves network architecture...
+    def __init__(self):
+        pass
+
+    def fit_transform(self, input_array, y=None):
+        return input_array
+
+    def fit(self, input_array, y=None):
+        return self
+
+    def transform(self, input_array, y=None):
+        return input_array * 1
+
+    def inverse_transform(self,input_array):
+        return input_array
+
 pd.set_option('display.max_rows', 500)
 pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
+
+
 class surival_dataset(Dataset):
     def __init__(self,str_identifier,seed=1337,fold_idx=0):
         print('fold_idx: ', fold_idx)
@@ -79,9 +100,9 @@ class surival_dataset(Dataset):
         if self.cat_cols:
             self.unique_cat_cols = df_full[cat_cols].max(axis=0).tolist()
             self.unique_cat_cols = [el+1 for el in self.unique_cat_cols]
-            for el in cat_cols:
-                print(f'column {el}:', df_full[el].unique().tolist())
-            print(self.unique_cat_cols)
+            # for el in cat_cols:
+            #     print(f'column {el}:', df_full[el].unique().tolist())
+            # print(self.unique_cat_cols)
         else:
             self.unique_cat_cols = []
 
@@ -99,6 +120,7 @@ class surival_dataset(Dataset):
         y_train = self.duration_mapper.fit_transform(df_train[self.duration_col].values.reshape(-1,1)).astype('float32')
         y_val = self.duration_mapper.transform(df_val[self.duration_col].values.reshape(-1,1)).astype('float32')
         y_test = self.duration_mapper.transform(df_test[self.duration_col].values.reshape(-1,1)).astype('float32')
+
 
         self.split(X=x_train,delta=df_train[self.event_col],y=y_train,mode='train',cat=cat_cols,df=df_train)
         self.split(X=x_val,delta=df_val[self.event_col],y=y_val,mode='val',cat=cat_cols,df=df_val)

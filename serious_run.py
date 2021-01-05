@@ -58,21 +58,22 @@ if __name__ == '__main__':
     d = dataset_d[args['dataset']]
     w = dataset_w[args['dataset']]
     d_t = dataset_d_t[args['dataset']]
+    bs = dataset_bs[args['dataset']]
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
-        'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
+        'bounding_op': [square,torch.nn.functional.relu],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
         'depth_x': d_x,
         'width_x': w_x,
         'depth': d,
         'width': w,
         'depth_t': d_t,
-        'width_t': [1],  # ads
-        'bs': dataset_bs[args['dataset']],
-        'lr': [1e-2,1e-1],
+        'width_t': [8,16,32],  # ads
+        'bs': bs,
+        'lr': [1e-3,1e-2,1e-1],
         'direct_dif': [False],
         'dropout': [0.0,0.1,0.2,0.3,0.4,0.5],
-        'eps': [1e-3,1e-4],
+        'eps': [1e-3,1e-4,1e-5],
         'weight_decay': [1e-3,1e-4,1e-2,0.1,0]
 
     }

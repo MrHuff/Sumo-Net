@@ -25,8 +25,8 @@ class hyperopt_training():
         self.hyperits = job_param['hyperits']
         self.selection_criteria = job_param['selection_criteria']
         self.grid_size  = job_param['grid_size']
-        self.test_grid_size  = job_param['test_grid_size']
         self.validation_interval = job_param['validation_interval']
+        self.test_grid_size  = job_param['test_grid_size']
         self.objective = job_param['objective']
         self.net_type = job_param['net_type']
         self.fold_idx = job_param['fold_idx']
@@ -60,6 +60,7 @@ class hyperopt_training():
         print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
         print(parameters_in)
         self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx)
+        self.cycle_length = self.dataloader.__len__()//self.validation_interval
         net_init_params = {
             'd_in_x' : self.dataloader.dataset.X.shape[1],
             'cat_size_list': self.dataloader.dataset.unique_cat_cols,
@@ -78,15 +79,19 @@ class hyperopt_training():
         self.train_objective = get_objective(self.objective)
         if self.net_type=='survival_net':
             self.model = survival_net(**net_init_params).to(self.device)
+        elif self.net_type=='survival_net_variant':
+            self.model = survival_net_variant(**net_init_params).to(self.device)
         elif self.net_type=='survival_net_basic':
             self.model = survival_net(**net_init_params).to(self.device)
+        elif self.net_type=='survival_net_nocov':
+            self.model = survival_net_nocov(**net_init_params).to(self.device)
         elif self.net_type=='ocean_net':
             self.model = ocean_net(**net_init_params).to(self.device)
         elif self.net_type=='cox_net':
             self.model = cox_net(**net_init_params).to(self.device)
 
         self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=10,min_lr=1e-4,factor=0.5)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=self.patience//4,min_lr=1e-3,factor=0.9)
         results = self.full_loop()
         self.global_hyperit+=1
         results['net_init_params'] = net_init_params
@@ -95,6 +100,45 @@ class hyperopt_training():
         del self.dataloader
         torch.cuda.empty_cache()
         return results
+
+    def eval_func(self,i,training_loss):
+        if i % self.cycle_length == 0:
+            val_likelihood, conc, ibs, inll = self.validation_score()
+            if self.debug:
+                test_likelihood, test_conc, test_ibs, test_inll = self.test_score()
+                self.writer.add_scalar('Loss/train', training_loss, i)
+                self.writer.add_scalar('Loss/val', val_likelihood, i)
+                self.writer.add_scalar('Loss/test', test_likelihood, i)
+                self.writer.add_scalar('conc/val', conc, i)
+                self.writer.add_scalar('conc/test', test_conc, i)
+                self.writer.add_scalar('ibs/val', ibs, i)
+                self.writer.add_scalar('ibs/test', test_ibs, i)
+                self.writer.add_scalar('inll/val', inll, i)
+                self.writer.add_scalar('inll/test', test_inll, i)
+                print('test:', test_likelihood, test_conc, test_ibs, test_inll)
+            if self.selection_criteria == 'train':
+                criteria = val_likelihood  # minimize #
+            elif self.selection_criteria == 'concordance':
+                criteria = -conc  # maximize
+            elif self.selection_criteria == 'ibs':
+                criteria = ibs  # minimize
+            elif self.selection_criteria == 'inll':
+                criteria = inll  # maximize
+            print('criteria score: ', criteria)
+            print('val conc', conc)
+            print('val ibs', ibs)
+            print('val inll', inll)
+            self.scheduler.step(criteria)
+            if criteria < self.best:
+                self.best = criteria
+                print('new best val score: ', self.best)
+                print('Dumping model')
+                self.dump_model()
+                self.counter = 0
+            else:
+                self.counter += 1
+            if self.counter>self.patience:
+                return True
 
     def training_loop(self):
         self.dataloader.dataset.set(mode='train')
@@ -119,7 +163,9 @@ class hyperopt_training():
             loss.backward()
             self.optimizer.step()
             total_loss_train+=loss.detach()
-        return total_loss_train.item()/(i+1)
+            if self.eval_func(i,total_loss_train/(i+1)):
+                return True
+        return False
 
     def eval_loop_kkbox(self,grid_size):
         S_series_container = []
@@ -261,51 +307,12 @@ class hyperopt_training():
         self.model.load_state_dict(torch.load(self.save_path + f'best_model_{self.global_hyperit}.pt'))
 
     def full_loop(self):
-        counter = 0
-        best = np.inf
+        self.counter = 0
+        self.best = np.inf
         if self.debug:
-            writer = SummaryWriter()
-
+            self.writer =SummaryWriter()
         for i in range(self.total_epochs):
-            training_loss = self.training_loop()
-            print(f'Epoch {i} training loss: ', training_loss)
-            if i%self.validation_interval==0:
-                val_likelihood,conc,ibs,inll = self.validation_score()
-                if self.debug:
-                    test_likelihood, test_conc, test_ibs, test_inll = self.test_score()
-
-                    writer.add_scalar('Loss/train', training_loss, i)
-                    writer.add_scalar('Loss/val', val_likelihood, i)
-                    writer.add_scalar('Loss/test', test_likelihood, i)
-                    writer.add_scalar('conc/val', conc,i)
-                    writer.add_scalar('conc/test', test_conc, i)
-                    writer.add_scalar('ibs/val', ibs,i)
-                    writer.add_scalar('ibs/test', test_ibs, i)
-                    writer.add_scalar('inll/val', inll,i)
-                    writer.add_scalar('inll/test',test_inll, i)
-                    print('test:', test_likelihood, test_conc, test_ibs ,test_inll)
-
-                self.scheduler.step(val_likelihood)
-                if self.selection_criteria == 'train':
-                    criteria = val_likelihood  # minimize #
-                elif self.selection_criteria == 'concordance':
-                    criteria = -conc  # maximize
-                elif self.selection_criteria == 'ibs':
-                    criteria = ibs  # minimize
-                elif self.selection_criteria == 'inll':
-                    criteria = inll  # maximize
-                print('criteria score: ', criteria)
-                print('val conc',conc)
-                print('val ibs',ibs)
-                print('val inll',inll)
-                if criteria<best:
-                    best = criteria
-                    print('new best val score: ',best)
-                    print('Dumping model')
-                    self.dump_model()
-                else:
-                    counter+=1
-            if counter > self.patience:
+            if self.training_loop():
                 break
         self.load_model()
         val_likelihood,val_conc,val_ibs,val_inll = self.validation_score()
@@ -369,6 +376,7 @@ class hyperopt_training():
                 best_trial['val_loglikelihood'],best_trial['val_conc'],best_trial['val_ibs'],best_trial['val_inll']]
         df = pd.DataFrame([data],columns=['test_loglikelihood','test_conc','test_ibs','test_inll',
                                           'val_loglikelihood','val_conc','val_ibs','val_inll'])
+        print(df)
         df.to_csv(self.save_path+'best_results.csv',index_label=False)
 
 

@@ -71,7 +71,7 @@ instance/
 
 # Scrapy stuff:
 .scrapy
-
+*.csv
 # Sphinx documentation
 docs/_build/
 
