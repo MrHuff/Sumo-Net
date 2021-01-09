@@ -11,6 +11,10 @@ import shutil
 from torch.utils.tensorboard import SummaryWriter
 from RAdam.radam import RAdam
 from tqdm import tqdm
+from pycox.models import CoxCC,CoxPH,CoxTime
+from pycox.models.cox_time import MLPVanillaCoxTime
+import torchtuples as tt
+
 def square(x):
     return x**2
 
@@ -51,6 +55,16 @@ class hyperopt_training():
         inll = eval_obj.integrated_nbll(time_grid)
         return val_likelihood,conc,ibs,inll
 
+    def benchmark_eval(self,y,events,X,wrapper):
+        surv = wrapper.predict_surv_df(X)
+        t_grid_np = np.linspace(y.min(), y.max(), surv.index.shape[0])
+        surv = surv.set_index(t_grid_np)
+        ev = EvalSurv(surv=surv, durations=y, events=events, censor_surv='km')
+        conc = ev.concordance_td('antolini')
+        ibs = ev.integrated_brier_score(t_grid_np)
+        inll = ev.integrated_nbll(t_grid_np)
+        return conc,ibs,inll
+
     def get_hyperparameterspace(self,hyper_param_space):
         self.hyperparameter_space = {}
         for string in self.hyperopt_params:
@@ -89,14 +103,50 @@ class hyperopt_training():
             self.model = ocean_net(**net_init_params).to(self.device)
         elif self.net_type=='cox_net':
             self.model = cox_net(**net_init_params).to(self.device)
+        elif self.net_type=='benchmark':
+            self.model = MLPVanillaCoxTime(in_features=net_init_params['d_in_x'],
+                                    num_nodes=net_init_params['layers'],
+                                    batch_norm=False,
+                                    dropout=net_init_params['dropout'],
+                                    activation=torch.nn.Tanh) #Actual net to be used
 
-        self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=self.patience//4,min_lr=1e-3,factor=0.9)
-        results = self.full_loop()
+
+        if self.net_type =='benchmark':
+            wrapper = CoxTime(self.model,RAdam)
+            wrapper.optimizer.set_lr(parameters_in['lr'])
+            callbacks = [tt.callbacks.EarlyStopping()]
+            verbose = True
+            y_train = (self.dataloader.dataset.train_y.squeeze().numpy(),self.dataloader.dataset.train_delta.squeeze().numpy())
+            y_val = (self.dataloader.dataset.val_y.squeeze().numpy(),self.dataloader.dataset.val_delta.squeeze().numpy())
+            y_test = (self.dataloader.dataset.test_y.squeeze().numpy(),self.dataloader.dataset.test_delta.squeeze().numpy())
+            val_data = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
+            test_data = tt.tuplefy(self.dataloader.dataset.test_X.numpy(), y_test)
+            log = wrapper.fit(input=self.dataloader.dataset.train_X.numpy(),
+                              target=y_train, epochs=self.total_epochs,callbacks= callbacks, verbose=verbose,
+                            val_data=val_data)
+            base_haz = wrapper.compute_baseline_hazards()
+
+
+            val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()
+            val_conc, val_ibs, val_inll =self.benchmark_eval(y=val_durations,events=self.dataloader.dataset.val_delta.float().squeeze().numpy(),
+                                                             wrapper=wrapper,X=self.dataloader.dataset.val_X.numpy())
+            test_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.test_y.numpy()).squeeze()
+            test_conc, test_ibs, test_inll =self.benchmark_eval(y=test_durations,events=self.dataloader.dataset.test_delta.float().squeeze().numpy(),
+                                                                wrapper=wrapper,X=self.dataloader.dataset.test_X.numpy())
+            with torch.no_grad():
+                val_partial_likelihood= wrapper.partial_log_likelihood(*val_data).mean()
+                test_partial_likelihood=wrapper.partial_log_likelihood(*test_data).mean()
+            results = self.parse_results(val_partial_likelihood, val_conc, val_ibs, val_inll,
+                                      test_partial_likelihood, test_conc, test_ibs, test_inll)
+
+        else:
+            self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
+            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=self.patience//4,min_lr=1e-3,factor=0.9)
+            results = self.full_loop()
+            del self.optimizer
         self.global_hyperit+=1
         results['net_init_params'] = net_init_params
         del self.model
-        del self.optimizer
         del self.dataloader
         torch.cuda.empty_cache()
         return results
@@ -318,6 +368,11 @@ class hyperopt_training():
         val_likelihood,val_conc,val_ibs,val_inll = self.validation_score()
         test_likelihood,test_conc,test_ibs,test_inll = self.test_score()
 
+        return self.parse_results(val_likelihood,val_conc,val_ibs,val_inll,
+                                  test_likelihood,test_conc,test_ibs,test_inll)
+
+    def parse_results(self, val_likelihood,val_conc,val_ibs,val_inll,
+                      test_likelihood, test_conc, test_ibs, test_inll ):
         if self.selection_criteria == 'train':
             criteria = val_likelihood
             criteria_test = test_likelihood

@@ -29,13 +29,13 @@ def generate_job_params(directory='job_dir/'):
         'loss_type':0,
         'net_type':'ocean_net',
         'fold_idx': 0,
-        'savedir':'ibs_eval_new'
+        'savedir':'ibs_eval_new_example'
     }
     counter = 0
     for fold_idx in [0,1,2,3,4]:
-        for dataset in [0,1,2,3]:
-            for l_type in [0,1]:
-                for net_t in ['survival_net_basic','survival_net_nocov','survival_net_variant']:
+        for dataset in [5,6,7]:
+            for l_type in [0]:
+                for net_t in ['survival_net_basic','benchmark']:
                     base_dict['dataset']=dataset
                     base_dict['loss_type']=l_type
                     base_dict['net_type']=net_t
@@ -44,4 +44,4 @@ def generate_job_params(directory='job_dir/'):
                     counter +=1
 
 if __name__ == '__main__':
-    generate_job_params(directory='job_dir_ibs_eval_new/')
+    generate_job_params(directory='job_dir_ibs_example_data/')

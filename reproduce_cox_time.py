@@ -53,8 +53,8 @@ output_bias = False
 
 # net = tt.practical.MLPVanilla(in_features, num_nodes, out_features, batch_norm,
 #                               dropout, output_bias=output_bias)
-net = MLPVanillaCoxTime(in_features, num_nodes, batch_norm, dropout)
-model = CoxTime(net, tt.optim.Adam,labtrans=labtrans)
+net = MLPVanillaCoxTime(in_features, num_nodes, batch_norm, dropout) #Actual net to be used
+model = CoxTime(net, tt.optim.Adam,labtrans=labtrans) #the cox time framework, dont do this..
 model.optimizer.set_lr(0.01)
 epochs = 512
 callbacks = [tt.callbacks.EarlyStopping()]
