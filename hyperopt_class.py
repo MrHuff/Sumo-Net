@@ -74,7 +74,7 @@ class hyperopt_training():
         print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
         print(parameters_in)
         self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx)
-        self.cycle_length = self.dataloader.__len__()//self.validation_interval
+        self.cycle_length = self.dataloader.__len__()//self.validation_interval+1
         net_init_params = {
             'd_in_x' : self.dataloader.dataset.X.shape[1],
             'cat_size_list': self.dataloader.dataset.unique_cat_cols,
@@ -125,7 +125,6 @@ class hyperopt_training():
                               target=y_train, epochs=self.total_epochs,callbacks= callbacks, verbose=verbose,
                             val_data=val_data)
             base_haz = wrapper.compute_baseline_hazards()
-
 
             val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()
             val_conc, val_ibs, val_inll =self.benchmark_eval(y=val_durations,events=self.dataloader.dataset.val_delta.float().squeeze().numpy(),

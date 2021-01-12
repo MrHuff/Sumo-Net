@@ -23,21 +23,21 @@ if __name__ == '__main__':
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
-        'depth_x': [2],
+        'depth_x': [1],
         'width_x': [32], #adapt for smaller time net
-        'depth_t': [2],
+        'depth_t': [1],
         'width_t': [32], #ads
         'depth': [1],
         'width': [1],
         'bs': [25],
-        'lr': [1e-2],
+        'lr': [1e-5],
         'direct_dif': [False],
         'dropout': [0.1],
-        'eps':[1e-4],
+        'eps':[1e-3],
         'weight_decay':[0]
 
     }
-    for i in [-1]:
+    for i in [0]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -55,7 +55,7 @@ if __name__ == '__main__':
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':10,
-            'net_type':'benchmark',
+            'net_type':'survival_net_basic',
             'objective': 'S_mean',
             'fold_idx':3,
             'savedir':'test'

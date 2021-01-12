@@ -71,7 +71,7 @@ if __name__ == '__main__':
         'width_t': [8,16,32],  # ads
         'bs': bs,
         'lr': [1e-3,1e-2,1e-1],
-        'direct_dif': [False],
+        'direct_dif': [args['direct_dif']],
         'dropout': [0.0,0.1,0.2,0.3,0.4,0.5],
         'eps': [1e-3,1e-4,1e-5],
         'weight_decay': [1e-3,1e-4,1e-2,0.1,0]

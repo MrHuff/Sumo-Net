@@ -128,11 +128,14 @@ def max_min_scaling(x):
     return (x-min)/(max-min), min ,max
 
 def cum_f_plot(variant,x_array,t_array,d,comment):
-    for x in x_array:
+    legend = []
+    for i,x in enumerate(x_array):
         S = lambda t: d.surv_given_x(t, x)
         S_array = [S(t) for t in t_array]
-        plt.plot(t_array, S_array, color=cm.hot(x))
-    plt.savefig(f"{variant}_{comment}.png", bbox_inches='tight')
+        p = plt.plot(t_array, S_array,label=f'x={x}')
+        legend.append(p[0])
+    plt.legend()
+    plt.savefig(f"{variant}_{comment}.png",tight_layout=True)
     plt.clf()
 
 
@@ -160,39 +163,36 @@ def empirical_cdf(variant,t,comment):
 def generate_toy_data(variant,n,**kwargs):
     if variant=='weibull':
         t_array = np.linspace(0, 2, num=100)
-        x_array = [0, 0.3, 1]
+        x_array = [0.0, 0.3, 1.0]
         dist = weibull(kwargs['a'],kwargs['b'])
     elif variant=='checkboard':
         t_array = np.linspace(0, 1, num=100)
         x_array = [0.1, 0.4]
         dist = checkerboard_grid(kwargs['grid_width'],kwargs['grid_length'],kwargs['num_tiles_width'],kwargs['num_tiles_length'])
     elif variant =='normal':
-        t_array = np.linspace(0, 150, num=100)
-        x_array = [0.0, 0.2, 0.4, 0.6, 0.8, 1]
+        t_array = np.linspace(80, 120, num=100)
+        x_array = [ 0.2, 0.4, 0.6, 0.8, 1.0]
         dist = varying_normals(kwargs['mean'],kwargs['var_slope'],kwargs['intercept'])
 
     x,t = dist.sample(n)
     empirical_cdf(variant,t,'pre')
     cum_f_plot(variant=variant,x_array=x_array,t_array=t_array,d=dist,comment='pre')
-    scatter_plot_1(variant,x,t,'pre')
-    c = dist.get_censoring(n)
-    d,z =get_delta_and_z(t,c)
-    # z,z_min,z_max = max_min_scaling(z)
-    # x,x_min,x_max = max_min_scaling(x)
-    # t,t_min,t_max = max_min_scaling(t)
-    empirical_cdf(variant,t,'after')
-
-    # scatter_plot_1(variant,x,t,'after')
-    censored, observed = np.where(d == 0), np.where(d == 1)
-    scatter_plot_2(variant,x,z,observed,censored)
-    # cum_f_plot(variant,(x_array-x_min)/(x_max-x_min),(t_array-t_min)/(t_max-t_min),dist,'after')
-
-    cols = ['x1','event','duration']
-    df = pd.DataFrame(np.stack([x,d,z],axis=1),columns=cols)
-    data_path =f'../{variant}/'
-    if not os.path.exists(data_path):
-        os.makedirs(data_path)
-    df.to_csv(data_path+'data.csv',index=False)
+    # scatter_plot_1(variant,x,t,'pre')
+    # c = dist.get_censoring(n)
+    # d,z =get_delta_and_z(t,c)
+    # empirical_cdf(variant,t,'after')
+    #
+    # # scatter_plot_1(variant,x,t,'after')
+    # censored, observed = np.where(d == 0), np.where(d == 1)
+    # scatter_plot_2(variant,x,z,observed,censored)
+    # # cum_f_plot(variant,(x_array-x_min)/(x_max-x_min),(t_array-t_min)/(t_max-t_min),dist,'after')
+    #
+    # cols = ['x1','event','duration']
+    # df = pd.DataFrame(np.stack([x,d,z],axis=1),columns=cols)
+    # data_path =f'../{variant}/'
+    # if not os.path.exists(data_path):
+    #     os.makedirs(data_path)
+    # df.to_csv(data_path+'data.csv',index=False)
 
 if __name__ == '__main__':
     n=25000

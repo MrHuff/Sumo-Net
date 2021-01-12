@@ -38,20 +38,21 @@ def get_best_params(path,selection_criteria):
 
 
 if __name__ == '__main__':
-    folder = 'ibs_eval_new'
+    folder = 'ablation_results'
     objective = ['S_mean','hazard_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
-    model = ['survival_net_basic','survival_net_nocov','survival_net_variant']
-    result_name = 'survival_net_ibs_eval_new'
+    model = ['survival_net_basic']
+    result_name = 'ablation_results'
     c = criteria[2]
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
         cols.append(criteria_name+'_mean')
         cols.append(criteria_name+'_std')
     df = []
+    dataset_indices = [0,1,2,3]
     for o in objective:
         for net_type in model:
-            for d in [0,1,2,3]:
+            for d in dataset_indices:
                 d_str = datasets[d]
                 row = [o,net_type,d_str]
                 desc_df = []
@@ -82,10 +83,10 @@ if __name__ == '__main__':
         mean_col = crit+'_mean'
         std_col = crit+'_std'
         piv_df[new_crit] = '$'+ all_jobs[mean_col].astype(str)+'\pm '+ all_jobs[std_col].astype(str)+'$'
-    piv_df = piv_df.append(tab)
 
+    if not (dataset_indices==[5,6,7]) and not (folder in ['ablation_results']):
+        piv_df = piv_df.append(tab)
     final_ = pd.pivot(piv_df,index='Method',columns='dataset')
-
     print(final_)
     print(final_.to_latex(buf=f"{result_name}.tex",escape=False))
     final_.to_csv(f"{result_name}.csv")
