@@ -279,17 +279,30 @@ class survival_net_basic(torch.nn.Module):
         h = self.middle_net((x_cov,y))
         return -log1plusexp(h)
 
-    def forward_f(self,x_cov,y,x_cat=[]):
+    def forward_f(self,x_cov,y,x_cat=[]): #Figure out how to zero out grad
+        y = torch.autograd.Variable(y,requires_grad=True)
         x_cov = self.covariate_net((x_cov,x_cat))
         h = self.middle_net((x_cov, y))
-        h_forward = self.middle_net((x_cov, y+self.eps))
         F = h.sigmoid()
-        if self.direct:
+        if self.direct=='full':
+            h_forward = self.middle_net((x_cov, y + self.eps))
             F_forward = h_forward.sigmoid()
             f = ((F_forward - F) / self.eps)
-        else:
+        elif self.direct=='semi':
+            h_forward = self.middle_net((x_cov, y + self.eps))
             dh = (h_forward - h) /self.eps
-            f =dh*F*(1-F) #(F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
+            f =dh*F*(1-F)
+        else:
+            f, = torch.autograd.grad(
+                outputs=[F],
+                inputs=[y],
+                grad_outputs=torch.ones_like(F),
+                retain_graph=True,
+                create_graph=True,
+                only_inputs=True,
+                allow_unused=True
+            )
+
         return f
 
     def forward_cum_hazard(self, x_cov, y, mask,x_cat=[]):
@@ -298,13 +311,26 @@ class survival_net_basic(torch.nn.Module):
         return log1plusexp(h)
 
     def forward_hazard(self, x_cov, y,x_cat=[]):
+        y = torch.autograd.Variable(y,requires_grad=True)
         x_cov = self.covariate_net((x_cov,x_cat))
         h = self.middle_net((x_cov,y))
-        h_forward = self.middle_net((x_cov,y+self.eps))
-        if self.direct:
+        if self.direct=='full':
+            h_forward = self.middle_net((x_cov, y + self.eps))
             hazard = (log1plusexp(h_forward) - log1plusexp(h)) / self.eps
-        else:
+        elif self.direct == 'semi':
+            h_forward = self.middle_net((x_cov, y + self.eps))
             hazard = torch.sigmoid(h) * ((h_forward - h) / self.eps)
+        else:
+            H=log1plusexp(h)
+            hazard, = torch.autograd.grad(
+                outputs=[H],
+                inputs=[y],
+                grad_outputs=torch.ones_like(H),
+                retain_graph=True,
+                create_graph=True,
+                only_inputs=True,
+                allow_unused=True
+            )
         return hazard
 
     def forward_S_eval(self,x_cov,y,x_cat=[]):
@@ -315,9 +341,6 @@ class survival_net_basic(torch.nn.Module):
             x_cov = self.covariate_net((x_cov,x_cat))
             h = self.middle_net((x_cov, y))
             return 1-h.sigmoid_()
-
-
-
 
 class survival_net(torch.nn.Module):
     def __init__(self,
@@ -398,18 +421,32 @@ class survival_net(torch.nn.Module):
         return -log1plusexp(h)
 
     def forward_f(self,x_cov,y,x_cat=[]):
+        y = torch.autograd.Variable(y,requires_grad=True)
         x_cov = self.covariate_net((x_cov,x_cat))
         nt = self.net_t(y)
-        nt_plus_h = self.net_t(y+self.eps)
         h = self.middle_net((x_cov, nt))
-        h_forward = self.middle_net((x_cov, nt_plus_h))
         F = h.sigmoid()
-        if self.direct:
+
+        if self.direct == 'full':
+            nt_plus_h = self.net_t(y + self.eps)
+            h_forward = self.middle_net((x_cov, nt_plus_h))
             F_forward = h_forward.sigmoid()
             f = ((F_forward - F) / self.eps)
+        elif self.direct == 'semi':
+            h_forward = self.middle_net((x_cov, y + self.eps))
+            dh = (h_forward - h) / self.eps
+            f = dh * F * (1 - F)
         else:
-            dh = (h_forward - h) /self.eps
-            f =dh*F*(1-F) #(F)*(1-F), F = h.sigmoid() log(sig(h)) + log(1-sig(h)) = h-2*log1plusexp(h)
+            f, = torch.autograd.grad(
+                outputs=[F],
+                inputs=[y],
+                grad_outputs=torch.ones_like(F),
+                retain_graph=True,
+                create_graph=True,
+                only_inputs=True,
+                allow_unused=True
+            )
+
         return f
 
     def forward_cum_hazard(self, x_cov, y, mask,x_cat=[]):
@@ -418,13 +455,26 @@ class survival_net(torch.nn.Module):
         return log1plusexp(h)
 
     def forward_hazard(self, x_cov, y,x_cat=[]):
+        y = torch.autograd.Variable(y,requires_grad=True)
         x_cov = self.covariate_net((x_cov,x_cat))
         h = self.middle_net((x_cov, self.net_t(y)))
-        h_forward = self.middle_net((x_cov, self.net_t(y+self.eps)))
-        if self.direct:
+        if self.direct=='full':
+            h_forward = self.middle_net((x_cov, self.net_t(y + self.eps)))
             hazard = (log1plusexp(h_forward) - log1plusexp(h)) / self.eps
-        else:
+        elif self.direct == 'semi':
+            h_forward = self.middle_net((x_cov, self.net_t(y + self.eps)))
             hazard = torch.sigmoid(h) * ((h_forward - h) / self.eps)
+        else:
+            H=log1plusexp(h)
+            hazard, = torch.autograd.grad(
+                outputs=[H],
+                inputs=[y],
+                grad_outputs=torch.ones_like(H),
+                retain_graph=True,
+                create_graph=True,
+                only_inputs=True,
+                allow_unused=True
+            )
         return hazard
 
     def forward_S_eval(self,x_cov,y,x_cat=[]):
@@ -435,6 +485,7 @@ class survival_net(torch.nn.Module):
             x_cov = self.covariate_net((x_cov,x_cat))
             h = self.middle_net((x_cov, self.net_t(y)))
             return 1-h.sigmoid_()
+
 class survival_net_variant(survival_net):
     def __init__(self,
                  d_in_x,

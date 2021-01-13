@@ -38,11 +38,11 @@ def get_best_params(path,selection_criteria):
 
 
 if __name__ == '__main__':
-    folder = 'ablation_results'
+    folder = 'autograd_test_results'
     objective = ['S_mean','hazard_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
-    model = ['survival_net_basic']
-    result_name = 'ablation_results'
+    model = ['survival_net','survival_net_basic']
+    result_name = 'autograd_test'
     c = criteria[2]
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
@@ -58,10 +58,12 @@ if __name__ == '__main__':
                 desc_df = []
                 for s in [1337]:
                     for f_idx in [0,1,2,3,4]:
-
+                        try:
                     # get_best_params(f'./{d_str}_{s}/hyperopt_database.p',c)
-                        vals = get_best_params(f'./{folder}/{d_str}_seed={s}_fold_idx={f_idx}_objective={o}_{net_type}/hyperopt_database.p',c)
-                        desc_df.append(vals)
+                            vals = get_best_params(f'./{folder}/{d_str}_seed={s}_fold_idx={f_idx}_objective={o}_{net_type}/hyperopt_database.p',c)
+                            desc_df.append(vals)
+                        except Exception as e:
+                            print(e)
                 tmp = pd.DataFrame(desc_df,columns =criteria)
                 tmp = tmp.describe()
                 means = tmp.iloc[1,:].values.tolist()

@@ -24,15 +24,15 @@ if __name__ == '__main__':
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
         'depth_x': [1],
-        'width_x': [32], #adapt for smaller time net
+        'width_x': [128], #adapt for smaller time net
         'depth_t': [1],
-        'width_t': [32], #ads
+        'width_t': [1], #ads
         'depth': [1],
-        'width': [1],
-        'bs': [25],
-        'lr': [1e-5],
-        'direct_dif': [False],
-        'dropout': [0.1],
+        'width': [128],
+        'bs': [50],
+        'lr': [1e-2],
+        'direct_dif': ['autograd'],
+        'dropout': [0.5],
         'eps':[1e-3],
         'weight_decay':[0]
 
@@ -51,7 +51,7 @@ if __name__ == '__main__':
             'device': device,
             'patience': 50,
             'hyperits': 1,
-            'selection_criteria':'ibs',
+            'selection_criteria':'train',
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':10,

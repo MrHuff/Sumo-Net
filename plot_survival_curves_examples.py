@@ -4,6 +4,9 @@ from utils.plot_utils import *
 from utils.dataloaders import *
 import os
 import shutil
+
+rcParams['figure.figsize'] = 40, 20
+
 if __name__ == '__main__':
     save_folder = 'sumo_example_plots'
     if not os.path.exists(save_folder):
@@ -23,7 +26,7 @@ if __name__ == '__main__':
             t_array = np.linspace(80, 120, num=100)
             x_array = [ 0.2, 0.4, 0.6, 0.8, 1.0]
 
-        net_types = ['survival_net_basic','benchmark']
+        net_types = ['survival_net_basic']
         net_type = net_types[0]
         o = 'S_mean'
         bs = 100

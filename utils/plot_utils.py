@@ -39,6 +39,8 @@ def plot_survival(fixed_X,time,dl,model,plt_name,):
             S = S.numpy()
         plt.plot( dl.dataset.invert_duration(grid.numpy()), S,label=f'x={fixed_X.values[i].item()}') #fix
     plt.legend()
+    plt.xlabel('Time')
+    plt.ylabel(r'S(t)')
     plt.savefig(plt_name)
     plt.clf()
 

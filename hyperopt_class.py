@@ -14,7 +14,7 @@ from tqdm import tqdm
 from pycox.models import CoxCC,CoxPH,CoxTime
 from pycox.models.cox_time import MLPVanillaCoxTime
 import torchtuples as tt
-
+import time
 def square(x):
     return x**2
 
@@ -96,7 +96,7 @@ class hyperopt_training():
         elif self.net_type=='survival_net_variant':
             self.model = survival_net_variant(**net_init_params).to(self.device)
         elif self.net_type=='survival_net_basic':
-            self.model = survival_net(**net_init_params).to(self.device)
+            self.model = survival_net_basic(**net_init_params).to(self.device)
         elif self.net_type=='survival_net_nocov':
             self.model = survival_net_nocov(**net_init_params).to(self.device)
         elif self.net_type=='ocean_net':
@@ -112,8 +112,8 @@ class hyperopt_training():
 
 
         if self.net_type =='benchmark':
-            wrapper = CoxTime(self.model,RAdam)
-            wrapper.optimizer.set_lr(parameters_in['lr'])
+            self.wrapper = CoxTime(self.model,RAdam)
+            self.wrapper.optimizer.set_lr(parameters_in['lr'])
             callbacks = [tt.callbacks.EarlyStopping()]
             verbose = True
             y_train = (self.dataloader.dataset.train_y.squeeze().numpy(),self.dataloader.dataset.train_delta.squeeze().numpy())
@@ -121,20 +121,20 @@ class hyperopt_training():
             y_test = (self.dataloader.dataset.test_y.squeeze().numpy(),self.dataloader.dataset.test_delta.squeeze().numpy())
             val_data = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
             test_data = tt.tuplefy(self.dataloader.dataset.test_X.numpy(), y_test)
-            log = wrapper.fit(input=self.dataloader.dataset.train_X.numpy(),
+            log = self.wrapper.fit(input=self.dataloader.dataset.train_X.numpy(),
                               target=y_train, epochs=self.total_epochs,callbacks= callbacks, verbose=verbose,
                             val_data=val_data)
-            base_haz = wrapper.compute_baseline_hazards()
+            base_haz = self.wrapper.compute_baseline_hazards()
 
             val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()
             val_conc, val_ibs, val_inll =self.benchmark_eval(y=val_durations,events=self.dataloader.dataset.val_delta.float().squeeze().numpy(),
-                                                             wrapper=wrapper,X=self.dataloader.dataset.val_X.numpy())
+                                                             wrapper=self.wrapper,X=self.dataloader.dataset.val_X.numpy())
             test_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.test_y.numpy()).squeeze()
             test_conc, test_ibs, test_inll =self.benchmark_eval(y=test_durations,events=self.dataloader.dataset.test_delta.float().squeeze().numpy(),
-                                                                wrapper=wrapper,X=self.dataloader.dataset.test_X.numpy())
+                                                                wrapper=self.wrapper,X=self.dataloader.dataset.test_X.numpy())
             with torch.no_grad():
-                val_partial_likelihood= wrapper.partial_log_likelihood(*val_data).mean()
-                test_partial_likelihood=wrapper.partial_log_likelihood(*test_data).mean()
+                val_partial_likelihood= self.wrapper.partial_log_likelihood(*val_data).mean()
+                test_partial_likelihood=self.wrapper.partial_log_likelihood(*test_data).mean()
             results = self.parse_results(val_partial_likelihood, val_conc, val_ibs, val_inll,
                                       test_partial_likelihood, test_conc, test_ibs, test_inll)
 
@@ -145,10 +145,80 @@ class hyperopt_training():
             del self.optimizer
         self.global_hyperit+=1
         results['net_init_params'] = net_init_params
-        del self.model
-        del self.dataloader
         torch.cuda.empty_cache()
         return results
+
+    def complexity_test(self,grid_size=100):
+
+        self.dataloader.dataset.set(mode='test')
+        self.model = self.model.train()
+        if self.net_type=='benchmark':
+            start = time.time()
+            base_haz = self.wrapper.compute_baseline_hazards()
+            test_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.test_y.numpy()).squeeze()
+            end = time.time()
+
+        else:
+            start = time.time()
+            S_series_container = []
+            S_log = []
+            f_log = []
+            durations = []
+            events = []
+            # self.model = self.model.eval()
+            # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
+            # events  = self.dataloader.dataset.delta.numpy()
+            chunks = self.dataloader.batch_size // 50 + 1
+            t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
+                                    grid_size)
+            time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
+            for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
+                X = X.to(self.device)
+                y = y.to(self.device)
+                delta = delta.to(self.device)
+                mask = delta == 1
+                X_f = X[mask, :]
+                y_f = y[mask, :]
+                if not isinstance(x_cat, list):
+                    x_cat = x_cat.to(self.device)
+                    x_cat_f = x_cat[mask, :]
+                else:
+                    x_cat_f = []
+                S = self.model.forward_cum(X, y, mask, x_cat)
+                S = S.detach()
+                f = self.model(X_f, y_f, x_cat_f)
+                f = f.detach()
+                if not isinstance(x_cat, list):
+                    for chk, chk_cat in zip(torch.chunk(X, chunks), torch.chunk(x_cat, chunks)):
+                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                        X_repeat = chk.repeat_interleave(grid_size, 0)
+                        x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
+                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                        S_serie = S_serie.detach()
+                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                else:
+                    x_cat_repeat = []
+                    for chk in torch.chunk(X, chunks):
+                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                        X_repeat = chk.repeat_interleave(grid_size, 0)
+                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                        S_serie = S_serie.detach()
+                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                S_log.append(S)
+                f_log.append(f)
+                durations.append(y.cpu().numpy())
+                events.append(delta.cpu().numpy())
+            durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
+            # durations = np.concatenate(durations).squeeze()
+            events = np.concatenate(events).squeeze()
+            S_log = torch.cat(S_log)
+            f_log = torch.cat(f_log)
+            S_series_container = pd.DataFrame(torch.cat(S_series_container, 1).numpy())
+            t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
+            S_series_container = S_series_container.set_index(t_grid_np)
+            end = time.time()
+        timing = end-start
+        return timing
 
     def eval_func(self,i,training_loss):
         if i % self.cycle_length == 0:
@@ -222,61 +292,61 @@ class hyperopt_training():
         f_log = []
         durations = []
         events = []
-        self.model = self.model.eval()
-        # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
-        # events  = self.dataloader.dataset.delta.numpy()
         chunks = self.dataloader.batch_size // 50 + 1
-        with torch.no_grad():
-            t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
-                                    grid_size)
-            time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-            for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
-                X = X.to(self.device)
-                y = y.to(self.device)
-                delta = delta.to(self.device)
-                mask = delta == 1
-                X_f = X[mask, :]
-                y_f = y[mask, :]
+        t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
+                                grid_size)
+        time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
+        for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
+            X = X.to(self.device)
+            y = y.to(self.device)
+            delta = delta.to(self.device)
+            mask = delta == 1
+            X_f = X[mask, :]
+            y_f = y[mask, :]
+            if not isinstance(x_cat, list):
+                x_cat = x_cat.to(self.device)
+                x_cat_f = x_cat[mask, :]
+            else:
+                x_cat_f = []
+            S = self.model.forward_cum(X, y,mask,x_cat)
+            S = S.detach()
+            f = self.model(X_f, y_f,x_cat_f)
+            f = f.detach()
+            S_log.append(S)
+            f_log.append(f)
+            if i*self.dataloader.batch_size<50000:
                 if not isinstance(x_cat, list):
-                    x_cat = x_cat.to(self.device)
-                    x_cat_f = x_cat[mask, :]
+                    for chk, chk_cat in zip(torch.chunk(X, chunks), torch.chunk(x_cat, chunks)):
+                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                        X_repeat = chk.repeat_interleave(grid_size, 0)
+                        x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
+                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                        S_serie = S_serie.detach()
+                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
                 else:
-                    x_cat_f = []
-                S = self.model.forward_cum(X, y, mask, x_cat)
-                f = self.model(X_f, y_f, x_cat_f)
-                S_log.append(S)
-                f_log.append(f)
-                if i*self.dataloader.batch_size<50000:
-                    if not isinstance(x_cat, list):
-                        for chk, chk_cat in zip(torch.chunk(X, chunks), torch.chunk(x_cat, chunks)):
-                            input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
-                            X_repeat = chk.repeat_interleave(grid_size, 0)
-                            x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
-                            S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
-                            S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-                    else:
-                        x_cat_repeat = []
-                        for chk in torch.chunk(X, chunks):
-                            input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
-                            X_repeat = chk.repeat_interleave(grid_size, 0)
-                            S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
-                            S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-                    durations.append(y.cpu().numpy())
-                    events.append(delta.cpu().numpy())
-            durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
-            # durations = np.concatenate(durations).squeeze()
-            events = np.concatenate(events).squeeze()
+                    x_cat_repeat = []
+                    for chk in torch.chunk(X, chunks):
+                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                        X_repeat = chk.repeat_interleave(grid_size, 0)
+                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                        S_serie = S_serie.detach()
+                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                durations.append(y.cpu().numpy())
+                events.append(delta.cpu().numpy())
+        durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
+        # durations = np.concatenate(durations).squeeze()
+        events = np.concatenate(events).squeeze()
 
-            S_log = torch.cat(S_log)
-            f_log = torch.cat(f_log)
-            # reshape(-1, 1)).squeeze()
-            S_series_container = pd.DataFrame(torch.cat(S_series_container, 1).numpy())
-            t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
-            S_series_container = S_series_container.set_index(t_grid_np)
-            # S_series_container=S_series_container.set_index(t_grid_np)
-            val_likelihood, conc, ibs, inll = self.calc_eval_objective(S_log, f_log, S_series_container,
-                                                                       durations=durations, events=events,
-                                                                       time_grid=t_grid_np)
+        S_log = torch.cat(S_log)
+        f_log = torch.cat(f_log)
+        # reshape(-1, 1)).squeeze()
+        S_series_container = pd.DataFrame(torch.cat(S_series_container, 1).numpy())
+        t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
+        S_series_container = S_series_container.set_index(t_grid_np)
+        # S_series_container=S_series_container.set_index(t_grid_np)
+        val_likelihood, conc, ibs, inll = self.calc_eval_objective(S_log, f_log, S_series_container,
+                                                                   durations=durations, events=events,
+                                                                   time_grid=t_grid_np)
         return val_likelihood.item(), conc, ibs, inll
 
     def eval_loop(self,grid_size):
@@ -289,54 +359,55 @@ class hyperopt_training():
         # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
         # events  = self.dataloader.dataset.delta.numpy()
         chunks = self.dataloader.batch_size//50+1
-        with torch.no_grad():
-            t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
-                                    grid_size)
-            time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-            for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
-                X = X.to(self.device)
-                y = y.to(self.device)
-                delta = delta.to(self.device)
-                mask = delta == 1
-                X_f = X[mask, :]
-                y_f = y[mask, :]
-                if not isinstance(x_cat, list):
-                    x_cat = x_cat.to(self.device)
-                    x_cat_f = x_cat[mask, :]
-                else:
-                    x_cat_f = []
-                S = self.model.forward_cum(X, y,mask,x_cat)
-                f = self.model(X_f, y_f,x_cat_f)
-                if not isinstance(x_cat, list):
-                    for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
-                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
-                        X_repeat = chk.repeat_interleave(grid_size, 0)
-                        x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
-                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
-                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-                else:
-                    x_cat_repeat = []
-                    for chk in torch.chunk(X, chunks):
-                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
-                        X_repeat = chk.repeat_interleave(grid_size, 0)
-                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
-                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-                S_log.append(S)
-                f_log.append(f)
-                durations.append(y.cpu().numpy())
-                events.append(delta.cpu().numpy())
-            durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
-            #durations = np.concatenate(durations).squeeze()
-            events = np.concatenate(events).squeeze()
-
-            S_log = torch.cat(S_log)
-            f_log = torch.cat(f_log)
-            # reshape(-1, 1)).squeeze()
-            S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
-            t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
-            S_series_container=S_series_container.set_index(t_grid_np)
-            #S_series_container=S_series_container.set_index(t_grid_np)
-            val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
+        t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
+                                grid_size)
+        time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
+        for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
+            X = X.to(self.device)
+            y = y.to(self.device)
+            delta = delta.to(self.device)
+            mask = delta == 1
+            X_f = X[mask, :]
+            y_f = y[mask, :]
+            if not isinstance(x_cat, list):
+                x_cat = x_cat.to(self.device)
+                x_cat_f = x_cat[mask, :]
+            else:
+                x_cat_f = []
+            S = self.model.forward_cum(X, y,mask,x_cat)
+            S = S.detach()
+            f = self.model(X_f, y_f,x_cat_f)
+            f = f.detach()
+            if not isinstance(x_cat, list):
+                for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
+                    input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                    X_repeat = chk.repeat_interleave(grid_size, 0)
+                    x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
+                    S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                    S_serie = S_serie.detach()
+                    S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+            else:
+                x_cat_repeat = []
+                for chk in torch.chunk(X, chunks):
+                    input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                    X_repeat = chk.repeat_interleave(grid_size, 0)
+                    S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                    S_serie = S_serie.detach()
+                    S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+            S_log.append(S)
+            f_log.append(f)
+            durations.append(y.cpu().numpy())
+            events.append(delta.cpu().numpy())
+        durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
+        #durations = np.concatenate(durations).squeeze()
+        events = np.concatenate(events).squeeze()
+        S_log = torch.cat(S_log)
+        f_log = torch.cat(f_log)
+        S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
+        t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
+        S_series_container=S_series_container.set_index(t_grid_np)
+        #S_series_container=S_series_container.set_index(t_grid_np)
+        val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
         return val_likelihood.item(),conc,ibs,inll
 
     def validation_score(self):
