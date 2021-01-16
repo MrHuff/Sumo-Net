@@ -12,7 +12,7 @@ from statsmodels.distributions import ECDF
 rcParams.update({'figure.autolayout': True})
 plt.rcParams['savefig.dpi'] = 75
 plt.rcParams['figure.autolayout'] = False
-plt.rcParams['figure.figsize'] = 10, 6
+plt.rcParams['figure.figsize'] = 20, 10
 plt.rcParams['axes.labelsize'] = 35
 plt.rcParams['axes.titlesize'] = 35
 plt.rcParams['font.size'] = 35
@@ -132,10 +132,13 @@ def cum_f_plot(variant,x_array,t_array,d,comment):
     for i,x in enumerate(x_array):
         S = lambda t: d.surv_given_x(t, x)
         S_array = [S(t) for t in t_array]
-        p = plt.plot(t_array, S_array,label=f'x={x}')
+        p = plt.plot(t_array, S_array,label=f'x={x}',linewidth=4.0)
         legend.append(p[0])
-    plt.legend()
-    plt.savefig(f"{variant}_{comment}.png",tight_layout=True)
+    plt.legend(prop={'size': 48})
+    plt.xlabel('Time')
+    plt.ylabel(r'S(t)')
+    plt.savefig(f"{variant}_{comment}.png", bbox_inches = 'tight',
+    pad_inches = 0.1)
     plt.clf()
 
 

@@ -11,6 +11,21 @@ from sklearn.model_selection import StratifiedKFold
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
+class LogTransformer(BaseEstimator, TransformerMixin): #Scaling is already good. This leaves network architecture...
+    def __init__(self):
+        pass
+
+    def fit_transform(self, input_array, y=None):
+        return np.log(input_array)
+
+    def fit(self, input_array, y=None):
+        return self
+
+    def transform(self, input_array, y=None):
+        return np.log(input_array)
+
+    def inverse_transform(self,input_array):
+        return np.exp(input_array)
 
 class IdentityTransformer(BaseEstimator, TransformerMixin): #Scaling is already good. This leaves network architecture...
     def __init__(self):
@@ -95,7 +110,7 @@ class surival_dataset(Dataset):
         leave = [(col, None) for col in binary_cols]
         self.cat_cols = cat_cols
         self.x_mapper = DataFrameMapper(standardize+leave)
-        self.duration_mapper = MinMaxScaler()
+        self.duration_mapper = LogTransformer()
 
         if self.cat_cols:
             self.unique_cat_cols = df_full[cat_cols].max(axis=0).tolist()

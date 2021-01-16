@@ -3,7 +3,6 @@ import GPUtil
 from hyperopt_class import *
 from utils.plot_utils import *
 
-rcParams['figure.figsize'] = 40, 20
 if __name__ == '__main__':
     save_folder = 'sumo_example_plots_benchmarks'
     if not os.path.exists(save_folder):
@@ -26,13 +25,13 @@ if __name__ == '__main__':
         hyper_param_space = {
             # torch.nn.functional.elu,torch.nn.functional.relu,
             'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
-            'transformation': [torch.nn.functional.tanh],
+            'transformation': [torch.nn.functional.relu],
             'depth_x': [1],
             'width_x': [16],  # adapt for smaller time net
             'depth_t': [1],
             'width_t': [1],  # ads
             'depth': [2],
-            'width': [32],
+            'width': [128],
             'bs': [256],
             'lr': [1e-2],
             'direct_dif': ['autograd'],
@@ -70,11 +69,12 @@ if __name__ == '__main__':
         data = surv[(t_array[0].item() <= surv.index) & (surv.index <= t_array[-1].item())]
         for i in range(len(x_array)):
             plt.plot(data.index.values, data.iloc[:,i].values,
-                     label=f'x={x_array[i]}')  # fix
-        plt.legend(borderpad=1)
+                     label=f'x={x_array[i]}',linewidth=4.0)  # fix
+        plt.legend(prop={'size': 48},loc=1)
         plt.xlabel('Time')
         plt.ylabel(r'S(t)')
-        plt.savefig(f'{save_folder}/{d_str}_3_survival_plot.png')
+        plt.savefig(f'{save_folder}/{d_str}_3_survival_plot.png',bbox_inches = 'tight',
+    pad_inches = 0.1)
         plt.clf()
 
 

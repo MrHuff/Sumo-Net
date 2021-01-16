@@ -11,11 +11,13 @@ tab3 = tab3.melt(id_vars=['Method'])
 tab = pd.DataFrame()
 tab['Method'] = tab1['Method']
 tab['dataset'] = tab1['variable']
-tab[r'$C^\text{td}$'] = tab1['value']
-tab['IBS'] = tab2['value']
-tab['IBLL'] = tab3['value']
+tab[r'$C^\text{td}$'] = tab1['value'].apply(lambda x: x if x=='NaN' else '$'+str(x)+'$')
+tab['IBS'] = tab2['value'].apply(lambda x: x if x=='NaN' else '$'+str(x)+'$')
+tab['IBLL'] = tab3['value'].apply(lambda x: x if x=='NaN' else '$'+str(x)+'$')
 tab = tab.append(tab4)
 print(tab)
+
+
 # def post_processing_parser():
 #     parser = argparse.ArgumentParser()
 #     parser.add_argument('--dataset', type=int, nargs='?', default=-1, help='which dataset to run')
@@ -38,18 +40,18 @@ def get_best_params(path,selection_criteria):
 
 
 if __name__ == '__main__':
-    folder = 'autograd_test_results'
-    objective = ['S_mean','hazard_mean']
+    folder = 'ibs_eval_new_example'
+    objective = ['S_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
-    model = ['survival_net','survival_net_basic']
-    result_name = 'autograd_test'
+    model = ['survival_net_basic','benchmark']
+    result_name = 'ibs_eval_new_example'
     c = criteria[2]
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
         cols.append(criteria_name+'_mean')
         cols.append(criteria_name+'_std')
     df = []
-    dataset_indices = [0,1,2,3]
+    dataset_indices = [5,6,7]
     for o in objective:
         for net_type in model:
             for d in dataset_indices:

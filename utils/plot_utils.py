@@ -8,7 +8,7 @@ from matplotlib import rcParams
 rcParams.update({'figure.autolayout': True})
 plt.rcParams['savefig.dpi'] = 75
 plt.rcParams['figure.autolayout'] = False
-plt.rcParams['figure.figsize'] = 10, 6
+plt.rcParams['figure.figsize'] = 20, 10
 plt.rcParams['axes.labelsize'] = 35
 plt.rcParams['axes.titlesize'] = 35
 plt.rcParams['font.size'] = 35
@@ -37,11 +37,13 @@ def plot_survival(fixed_X,time,dl,model,plt_name,):
         with torch.no_grad():
             S=model.forward_S_eval(x_in[i,:].unsqueeze(-1).repeat(points,1),grid)
             S = S.numpy()
-        plt.plot( dl.dataset.invert_duration(grid.numpy()), S,label=f'x={fixed_X.values[i].item()}') #fix
-    plt.legend()
+        plt.plot( dl.dataset.invert_duration(grid.numpy()), S,label=f'x={fixed_X.values[i].item()}',linewidth=4.0
+                  ) #fix
+    plt.legend(prop={'size': 48})
     plt.xlabel('Time')
     plt.ylabel(r'S(t)')
-    plt.savefig(plt_name)
+    plt.savefig(plt_name,bbox_inches = 'tight',
+    pad_inches = 0.1)
     plt.clf()
 
 

@@ -5,8 +5,6 @@ from utils.dataloaders import *
 import os
 import shutil
 
-rcParams['figure.figsize'] = 40, 20
-
 if __name__ == '__main__':
     save_folder = 'sumo_example_plots'
     if not os.path.exists(save_folder):
@@ -36,6 +34,7 @@ if __name__ == '__main__':
         PATH = f'./{folder}/{d_str}_seed={seed}_fold_idx={fold_idx}_objective={o}_{net_type}/'
         model = load_best_model(PATH=PATH)
         model = model.eval()
+        model.direct = 'semi'
         dl = get_dataloader(d_str,bs,seed,fold_idx)
         dat = pd.DataFrame(np.array(x_array).reshape(-1,1),columns=['x1'])
         plot_survival(dat,t_array.reshape(-1,1),dl,model,f'{save_folder}/{d_str}_{fold_idx}_survival_plot.png')

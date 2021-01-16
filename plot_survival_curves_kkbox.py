@@ -26,6 +26,7 @@ if __name__ == '__main__':
     folder = 'ibs_eval'
     PATH = f'./{folder}/{d_str}_seed={seed}_fold_idx={fold_idx}_objective={o}_{net_type}/'
     model = load_best_model(PATH=PATH)
+    model.direct = 'semi'
     model = model.eval()
     dataloader = get_dataloader(d_str,bs,seed,fold_idx)
     dataloader.dataset.set('test')
@@ -40,7 +41,7 @@ if __name__ == '__main__':
     model = model.to(device)
     num_clusters = 10
     with torch.no_grad():
-        t_grid_np = np.linspace(dataloader.dataset.min_duration, dataloader.dataset.max_duration,
+        t_grid_np = np.linspace(dataloader.dataset.min_duration, dataloader.dataset.max_duration*1.1,
                                 grid_size)
         time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
         for i, (X, x_cat, y, delta) in enumerate(tqdm(dataloader)):
@@ -73,13 +74,14 @@ if __name__ == '__main__':
         u,counts = cluster_ids_x.unique(return_counts=True)
         counts_prop = counts.float().cpu().numpy()/n *100
 
-    rcParams['figure.figsize'] = 40, 20
+    rcParams['figure.figsize'] = 60, 20
     for i in range(cluster_centers.shape[0]):
-        plt.plot( t_grid_np,  S_series_container[i,:].cpu().numpy(),label=f'Cluster {i}: {round(counts_prop[i].item())}'+r'\%') #fix
-    plt.legend(borderpad=1)
+        plt.plot( t_grid_np,  S_series_container[i,:].cpu().numpy(),label=f'Cluster {i}: {round(counts_prop[i].item())}'+r'\%',linewidth=4.0) #fix
+    plt.legend(borderpad=1,prop={'size': 48},loc=1)
     plt.xlabel('Time')
     plt.ylabel(r'S(t)')
-    plt.savefig('test_kkbox_kmeans.png')
+    plt.savefig('test_kkbox_kmeans.png',bbox_inches = 'tight',
+    pad_inches = 0.1)
 
 
 
