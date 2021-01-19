@@ -29,7 +29,7 @@ def generate_job_params(directory='job_dir/'):
         'loss_type':0,
         'net_type':'ocean_net',
         'fold_idx': 0,
-        'savedir':'ibs_log_normalization',
+        'savedir':'ibs_exp_test',
         'direct_dif': ['autograd'],
     }
     counter = 0
@@ -45,4 +45,4 @@ def generate_job_params(directory='job_dir/'):
                     counter +=1
 
 if __name__ == '__main__':
-        generate_job_params(directory='job_ibs_log_normalization/')
+        generate_job_params(directory='job_ibs_exp_test/')

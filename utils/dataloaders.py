@@ -110,7 +110,7 @@ class surival_dataset(Dataset):
         leave = [(col, None) for col in binary_cols]
         self.cat_cols = cat_cols
         self.x_mapper = DataFrameMapper(standardize+leave)
-        self.duration_mapper = LogTransformer()
+        self.duration_mapper = MinMaxScaler()
 
         if self.cat_cols:
             self.unique_cat_cols = df_full[cat_cols].max(axis=0).tolist()

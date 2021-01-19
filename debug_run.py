@@ -21,7 +21,7 @@ if __name__ == '__main__':
     # eval more frequently...
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
-        'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
+        'bounding_op': [torch.exp,],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
         'depth_x': [1],
         'width_x': [32], #adapt for smaller time net
@@ -46,12 +46,12 @@ if __name__ == '__main__':
             'd_out': 1,
             'dataset_string': datasets[i],
             'seed': 1337,#,np.random.randint(0,9999),
-            'eval_metric': 'train',
+            'eval_metric': 'ibs',
             'total_epochs': 5000,
             'device': device,
             'patience': 50,
             'hyperits': 1,
-            'selection_criteria':'train',
+            'selection_criteria':'ibs',
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':10,

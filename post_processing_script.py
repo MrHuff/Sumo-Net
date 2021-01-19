@@ -40,18 +40,18 @@ def get_best_params(path,selection_criteria):
 
 
 if __name__ == '__main__':
-    folder = 'ibs_eval_new_example'
-    objective = ['S_mean']
+    folder = 'ibs_exp_test'
+    objective = ['S_mean','hazard_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
-    model = ['survival_net_basic','benchmark']
-    result_name = 'ibs_eval_new_example'
+    model = ['survival_net_basic','survival_net']
+    result_name = 'ibs_exp_test'
     c = criteria[2]
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
         cols.append(criteria_name+'_mean')
         cols.append(criteria_name+'_std')
     df = []
-    dataset_indices = [5,6,7]
+    dataset_indices = [0,1,2,3]
     for o in objective:
         for net_type in model:
             for d in dataset_indices:
