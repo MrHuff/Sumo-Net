@@ -9,12 +9,13 @@ rcParams.update({'figure.autolayout': True})
 plt.rcParams['savefig.dpi'] = 75
 plt.rcParams['figure.autolayout'] = False
 plt.rcParams['figure.figsize'] = 20, 10
-plt.rcParams['axes.labelsize'] = 35
 plt.rcParams['axes.titlesize'] = 35
-plt.rcParams['font.size'] = 35
+font_size = 60
+plt.rcParams['font.size'] = font_size
+plt.rcParams['legend.fontsize'] = font_size
+plt.rcParams['axes.labelsize'] = font_size
 plt.rcParams['lines.linewidth'] = 2.0
 plt.rcParams['lines.markersize'] = 8
-plt.rcParams['legend.fontsize'] = 26
 plt.rcParams['text.usetex'] = True
 plt.rcParams['font.family'] = "serif"
 plt.rcParams['font.serif'] = "cm"

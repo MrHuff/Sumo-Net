@@ -1,6 +1,7 @@
 # Byte-compiled / optimized / DLL files
 RAdam
 runs
+*.tex
 *.pkl
 __pycache__/
 *.py[cod]

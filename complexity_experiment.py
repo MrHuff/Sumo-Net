@@ -36,6 +36,8 @@ if __name__ == '__main__':
         'weight_decay': [0]
     }
     timings = []
+    devices = GPUtil.getAvailable(order='memory', limit=8)
+    device = devices[0]
     for i in [0,1,2,3,4,5,6,7]:
         for net in ['benchmark','survival_net_basic']:
             if net=='benchmark':
@@ -43,8 +45,6 @@ if __name__ == '__main__':
             else:
                 hyper_param_space['depth']=[1]
             for f in [0,1,2,3,4]:
-                devices = GPUtil.getAvailable(order='memory', limit=8)
-                device = devices[0]
                 job_params = {
                     'd_out': 1,
                     'dataset_string': datasets[i],
@@ -70,6 +70,4 @@ if __name__ == '__main__':
                 timings.append([i,net,f,timing])
 
     df = pd.DataFrame(timings,columns=['dataset','net','fold','time'])
-    df.to_csv('raw_timings.csv')
-    df_d = df.describe()
-    df_d.to_csv('timings.csv')
+    df.to_csv('raw_timings_new.csv')

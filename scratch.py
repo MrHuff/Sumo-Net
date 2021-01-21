@@ -9,7 +9,7 @@ def pivot_to_df(table_mean):
 
     return table_mean
 
-df = pd.read_csv('raw_timings.csv')
+df = pd.read_csv('raw_timings_new.csv')
 table_mean = df.pivot_table(values='time',index='net',columns='dataset',aggfunc=np.mean)
 table_std = df.pivot_table(values='time',index='net',columns='dataset',aggfunc=np.std)
 table_mean = pivot_to_df(table_mean)
@@ -20,6 +20,8 @@ table_mean = tab.append(speedup.apply(lambda x: '$'+str(round(x)))+'$',ignore_in
 table_mean.columns = [el.upper() for el in datasets]
 table_mean = table_mean.rename(index = {0:'Cox-Time',1:'SuMo-net',2:'Speedup factor'})
 table_mean.to_latex(buf=f"timings.tex",escape=False)
+table_mean_t = table_mean.transpose()
+table_mean_t.to_latex(buf=f"timings_transposed.tex",escape=False)
 
 # median_1 = round(df['Cox-Time'].median(),2)
 # median_2 = round(df['SuMo-net'].median(),2)

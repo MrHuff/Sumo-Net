@@ -161,13 +161,8 @@ class hyperopt_training():
         else:
             start = time.time()
             S_series_container = []
-            S_log = []
-            f_log = []
             durations = []
             events = []
-            # self.model = self.model.eval()
-            # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
-            # events  = self.dataloader.dataset.delta.numpy()
             chunks = self.dataloader.batch_size // 50 + 1
             t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                     grid_size)
@@ -177,17 +172,11 @@ class hyperopt_training():
                 y = y.to(self.device)
                 delta = delta.to(self.device)
                 mask = delta == 1
-                X_f = X[mask, :]
-                y_f = y[mask, :]
                 if not isinstance(x_cat, list):
                     x_cat = x_cat.to(self.device)
                     x_cat_f = x_cat[mask, :]
                 else:
                     x_cat_f = []
-                S = self.model.forward_cum(X, y, mask, x_cat)
-                S = S.detach()
-                f = self.model(X_f, y_f, x_cat_f)
-                f = f.detach()
                 if not isinstance(x_cat, list):
                     for chk, chk_cat in zip(torch.chunk(X, chunks), torch.chunk(x_cat, chunks)):
                         input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
@@ -204,15 +193,8 @@ class hyperopt_training():
                         S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
                         S_serie = S_serie.detach()
                         S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-                S_log.append(S)
-                f_log.append(f)
                 durations.append(y.cpu().numpy())
                 events.append(delta.cpu().numpy())
-            durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
-            # durations = np.concatenate(durations).squeeze()
-            events = np.concatenate(events).squeeze()
-            S_log = torch.cat(S_log)
-            f_log = torch.cat(f_log)
             S_series_container = pd.DataFrame(torch.cat(S_series_container, 1).numpy())
             t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
             S_series_container = S_series_container.set_index(t_grid_np)

@@ -14,7 +14,10 @@ tab['dataset'] = tab1['variable']
 tab[r'$C^\text{td}$'] = tab1['value'].apply(lambda x: x if x=='NaN' else '$'+str(x)+'$')
 tab['IBS'] = tab2['value'].apply(lambda x: x if x=='NaN' else '$'+str(x)+'$')
 tab['IBLL'] = tab3['value'].apply(lambda x: x if x=='NaN' else '$'+str(x)+'$')
-tab = tab.append(tab4)
+tab4[r'$C^\text{td}$'] =tab4[r'$C^\text{td}$'].apply(lambda x: x if x=='NaN' else '$'+str(x)+'$')
+tab4['IBS'] = tab4['IBS'].apply(lambda x: x if x=='NaN' else '$'+str(x)+'$')
+tab4['IBLL'] = tab4['IBLL'].apply(lambda x: x if x=='NaN' else '$'+str(x)+'$')
+# tab = tab.append(tab4)
 print(tab)
 
 
@@ -40,18 +43,18 @@ def get_best_params(path,selection_criteria):
 
 
 if __name__ == '__main__':
-    folder = 'ibs_exp_test'
+    folder = 'ibs_eval'
     objective = ['S_mean','hazard_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
-    model = ['survival_net_basic','survival_net']
-    result_name = 'ibs_exp_test'
+    model = ['survival_net_basic']
+    result_name = f'{folder}_results'
     c = criteria[2]
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
         cols.append(criteria_name+'_mean')
         cols.append(criteria_name+'_std')
     df = []
-    dataset_indices = [0,1,2,3]
+    dataset_indices = [4]
     for o in objective:
         for net_type in model:
             for d in dataset_indices:
@@ -85,11 +88,14 @@ if __name__ == '__main__':
     piv_df['dataset'] = all_jobs['dataset'].apply(lambda x: x.upper())
     for crit,new_crit in zip(criteria[1:],[r'$C^\text{td}$','IBS','IBLL']):
         mean_col = crit+'_mean'
-        std_col = crit+'_std'
-        piv_df[new_crit] = '$'+ all_jobs[mean_col].astype(str)+'\pm '+ all_jobs[std_col].astype(str)+'$'
+        # std_col = crit+'_std'
+        piv_df[new_crit] = '$'+ all_jobs[mean_col].astype(str)+'$'#'\pm '+ all_jobs[std_col].astype(str)+'$'
 
     if not (dataset_indices==[5,6,7]) and not (folder in ['ablation_results']):
-        piv_df = piv_df.append(tab)
+        if dataset_indices==[4]:
+            piv_df = piv_df.append(tab4)
+        else:
+            piv_df = piv_df.append(tab)
     final_ = pd.pivot(piv_df,index='Method',columns='dataset')
     print(final_)
     print(final_.to_latex(buf=f"{result_name}.tex",escape=False))

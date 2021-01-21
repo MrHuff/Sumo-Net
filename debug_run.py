@@ -37,7 +37,7 @@ if __name__ == '__main__':
         'weight_decay':[1e-3]
 
     }
-    for i in [0]:
+    for i in [7]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -55,7 +55,7 @@ if __name__ == '__main__':
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':10,
-            'net_type':'survival_net_basic',
+            'net_type':'survival_net',
             'objective': 'S_mean',
             'fold_idx':3,
             'savedir':'test'

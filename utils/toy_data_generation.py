@@ -13,12 +13,13 @@ rcParams.update({'figure.autolayout': True})
 plt.rcParams['savefig.dpi'] = 75
 plt.rcParams['figure.autolayout'] = False
 plt.rcParams['figure.figsize'] = 20, 10
-plt.rcParams['axes.labelsize'] = 35
 plt.rcParams['axes.titlesize'] = 35
-plt.rcParams['font.size'] = 35
+font_size = 80
+plt.rcParams['font.size'] = font_size
+plt.rcParams['legend.fontsize'] = font_size
+plt.rcParams['axes.labelsize'] = font_size
 plt.rcParams['lines.linewidth'] = 2.0
 plt.rcParams['lines.markersize'] = 8
-plt.rcParams['legend.fontsize'] = 26
 plt.rcParams['text.usetex'] = True
 plt.rcParams['font.family'] = "serif"
 plt.rcParams['font.serif'] = "cm"
@@ -34,6 +35,9 @@ class toy_data_class():
         df = pd.read_csv(self.load_path+'data.csv')
         print('covariate (X)', df[self.log_cols].max())
         print('target (y)', df[self.col_duration].max())
+        print('n', df.shape[0])
+        print('prop_cenc', df[self.col_event].sum()/df.shape[0])
+        print('unique',df.nunique())
         return df
 
 class weibull():  # a weibull distribution with scale set to 1
