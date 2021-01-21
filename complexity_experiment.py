@@ -70,4 +70,4 @@ if __name__ == '__main__':
                 timings.append([i,net,f,timing])
 
     df = pd.DataFrame(timings,columns=['dataset','net','fold','time'])
-    df.to_csv('raw_timings_new.csv')
+    df.to_csv('raw_timings_new_redo.csv')

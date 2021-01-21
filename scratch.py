@@ -9,7 +9,7 @@ def pivot_to_df(table_mean):
 
     return table_mean
 
-df = pd.read_csv('raw_timings_new.csv')
+df = pd.read_csv('raw_timings_new_redo.csv')
 table_mean = df.pivot_table(values='time',index='net',columns='dataset',aggfunc=np.mean)
 table_std = df.pivot_table(values='time',index='net',columns='dataset',aggfunc=np.std)
 table_mean = pivot_to_df(table_mean)

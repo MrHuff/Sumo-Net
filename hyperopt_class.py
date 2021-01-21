@@ -156,6 +156,9 @@ class hyperopt_training():
             start = time.time()
             base_haz = self.wrapper.compute_baseline_hazards()
             test_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.test_y.numpy()).squeeze()
+            surv = self.wrapper.predict_surv_df(self.dataloader.dataset.test_X)
+            t_grid_np = np.linspace(test_durations.min(), test_durations.max(), surv.index.shape[0])
+            surv = surv.set_index(t_grid_np)
             end = time.time()
 
         else:
