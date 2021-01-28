@@ -1,5 +1,6 @@
 from hyperopt_class import *
 import numpy as np
+
 import torch
 import GPUtil
 import warnings
@@ -21,23 +22,24 @@ if __name__ == '__main__':
     # eval more frequently...
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
-        'bounding_op': [torch.exp,],  # torch.sigmoid, torch.relu, torch.exp,
+        'bounding_op': [torch.nn.ReLU(),],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
         'depth_x': [1],
         'width_x': [32], #adapt for smaller time net
-        'depth_t': [1],
-        'width_t': [1], #ads
-        'depth': [1],
+        'depth_t': [2],
+        'width_t': [16], #ads
+        'depth': [2],
         'width': [32],
-        'bs': [50],
+        'bs': [500],
         'lr': [1e-2],
         'direct_dif': ['autograd'],
-        'dropout': [0.1],
+        'dropout': [0.5],
         'eps':[1e-3],
-        'weight_decay':[1e-3]
+        'weight_decay':[0.],
+        'reg_lambda':[1.0]
 
     }
-    for i in [7]:
+    for i in [0]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -58,8 +60,9 @@ if __name__ == '__main__':
             'net_type':'survival_net',
             'objective': 'S_mean',
             'fold_idx':3,
-            'savedir':'test'
-
+            'savedir':'test',
+            'reg_mode':'ibs',
+            'ibs_est_deltas':100
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         training_obj.debug=True

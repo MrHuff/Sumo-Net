@@ -18,6 +18,13 @@ import time
 def square(x):
     return x**2
 
+def ibs_calc(S,mask_1,mask_2,gst,gt):
+    return ((S**2)*mask_1)/gst + ((1.-S)**2 * mask_2)/gt
+
+def ibll_calc(S,mask_1,mask_2,gst,gt):
+    return ((torch.log(1-S))*mask_1)/gst + ((torch.log(S)) * mask_2)/gt
+
+
 class hyperopt_training():
     def __init__(self,job_param,hyper_param_space):
         self.d_out = job_param['d_out']
@@ -35,6 +42,8 @@ class hyperopt_training():
         self.net_type = job_param['net_type']
         self.fold_idx = job_param['fold_idx']
         self.savedir = job_param['savedir']
+        self.reg_mode = job_param['reg_mode']
+        self.ibs_est_deltas = job_param['ibs_est_deltas']
         self.global_hyperit = 0
         self.debug = False
         torch.cuda.set_device(self.device)
@@ -44,8 +53,12 @@ class hyperopt_training():
         else:
             shutil.rmtree(self.save_path)
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','reg_lambda']
         self.get_hyperparameterspace(hyper_param_space)
+        if self.reg_mode=='ibs':
+            self.reg_func = ibs_calc
+        elif self.reg_mode=='ibll':
+            self.reg_func = ibll_calc
 
     def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
         val_likelihood = self.train_objective(S,f)
@@ -90,6 +103,7 @@ class hyperopt_training():
             'dropout':parameters_in['dropout'],
             'eps':parameters_in['eps']
         }
+        self.reg_lambda = parameters_in['reg_lambda']
         self.train_objective = get_objective(self.objective)
         if self.net_type=='survival_net':
             self.model = survival_net(**net_init_params).to(self.device)
@@ -170,7 +184,7 @@ class hyperopt_training():
             t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                     grid_size)
             time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-            for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
+            for i, (X, x_cat, y, delta,s_kmf) in enumerate(tqdm(self.dataloader)):
                 X = X.to(self.device)
                 y = y.to(self.device)
                 delta = delta.to(self.device)
@@ -205,7 +219,7 @@ class hyperopt_training():
         timing = end-start
         return timing
 
-    def eval_func(self,i,training_loss):
+    def eval_func(self,i,training_loss,likelihood,reg_loss):
         if i % self.cycle_length == 0:
             val_likelihood, conc, ibs, inll = self.validation_score()
             if self.debug:
@@ -228,6 +242,7 @@ class hyperopt_training():
                 criteria = ibs  # minimize
             elif self.selection_criteria == 'inll':
                 criteria = inll  # maximize
+            print(f'total_loss: {training_loss} likelihood: {likelihood} reg_loss: {reg_loss}')
             print('criteria score: ', criteria)
             print('val conc', conc)
             print('val ibs', ibs)
@@ -244,11 +259,37 @@ class hyperopt_training():
             if self.counter>self.patience:
                 return True
 
+    def calculate_reg_loss(self,X,x_cat,y,delta,gst):
+        add = 100//self.ibs_est_deltas
+        step_size = 1e-2*add
+        begin = np.random.randint(0,add)
+        indices = np.arange(begin,100,add)
+        gst = gst.to(self.device)
+        gt = self.dataloader.dataset.t_kmf[indices,:].t().to(self.device)
+        t = self.dataloader.dataset.times[indices,:].t().to(self.device)
+        mask_1 = (y<=t)*delta.unsqueeze(-1)
+        mask_2 = y>t
+        grid_size = t.shape[1]
+        if not isinstance(x_cat, list):
+            x_cat_repeat = x_cat.repeat_interleave(grid_size, 0)
+        else:
+            x_cat_repeat = []
+        input_time = t.repeat((1,X.shape[0])).t()
+        X_repeat = X.repeat_interleave(grid_size, 0)
+        S = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)
+        S = S.view(-1, grid_size) #bs x gridsize
+        S = self.reg_func(S=S,mask_1=mask_1,mask_2=mask_2,gst=gst,gt=gt)
+        S[:,0]=S[:,0]/2.
+        S[:,-1]=S[:,-1]/2.
+        return torch.mean(S.sum(dim=1)*step_size)
+
     def training_loop(self):
         self.dataloader.dataset.set(mode='train')
-        total_loss_train=0
+        total_loss_train=0.
+        tot_likelihood=0.
+        tot_reg_loss=0.
         self.model = self.model.train()
-        for i,(X,x_cat,y,delta) in enumerate(tqdm(self.dataloader)):
+        for i,(X,x_cat,y,delta,s_kmf) in enumerate(tqdm(self.dataloader)):
             X = X.to(self.device)
             y = y.to(self.device)
             delta = delta.to(self.device)
@@ -262,12 +303,20 @@ class hyperopt_training():
                 x_cat_f = []
             S = self.model.forward_cum(X,y,mask,x_cat)
             f = self.model(X_f,y_f,x_cat_f)
-            loss = self.train_objective(S,f)
+            reg_loss = 0.0
+            if self.reg_mode in ['ibs','ibll']:
+                reg_loss = self.calculate_reg_loss(X=X,x_cat=x_cat,y=y,delta=delta,gst=s_kmf)
+                if self.reg_mode == 'ibll':
+                    reg_loss = -reg_loss
+            loss =self.train_objective(S,f)
+            total_loss = reg_loss#loss + self.reg_lambda*reg_loss
             self.optimizer.zero_grad()
-            loss.backward()
+            total_loss.backward()
             self.optimizer.step()
-            total_loss_train+=loss.detach()
-            if self.eval_func(i,total_loss_train/(i+1)):
+            total_loss_train+=total_loss.detach()
+            tot_likelihood+=loss.detach()
+            tot_reg_loss+=reg_loss.detach()
+            if self.eval_func(i,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
                 return True
         return False
 
@@ -281,7 +330,7 @@ class hyperopt_training():
         t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                 grid_size)
         time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-        for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
+        for i, (X, x_cat, y, delta,s_kmf) in enumerate(tqdm(self.dataloader)):
             X = X.to(self.device)
             y = y.to(self.device)
             delta = delta.to(self.device)
@@ -347,7 +396,7 @@ class hyperopt_training():
         t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                 grid_size)
         time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-        for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
+        for i, (X, x_cat, y, delta,s_kmf) in enumerate(tqdm(self.dataloader)):
             X = X.to(self.device)
             y = y.to(self.device)
             delta = delta.to(self.device)
