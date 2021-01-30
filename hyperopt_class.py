@@ -18,11 +18,39 @@ import time
 def square(x):
     return x**2
 
+def linear(x):
+    return x
+
 def ibs_calc(S,mask_1,mask_2,gst,gt):
-    return ((S**2)*mask_1)/gst + ((1.-S)**2 * mask_2)/gt
+
+    weights_2 = 1./gt
+    weights_2[weights_2==float("Inf")]=0.0
+    weights_1 = 1./gst
+    weights_1[weights_1==float("Inf")]=0.0
+    return ((S**2)*mask_1)*weights_1 + ((1.-S)**2 * mask_2)*weights_2
 
 def ibll_calc(S,mask_1,mask_2,gst,gt):
     return ((torch.log(1-S))*mask_1)/gst + ((torch.log(S)) * mask_2)/gt
+
+def simpsons_composite(S,step_size,n):
+    idx_odd = torch.arange(1,n-1,2)
+    idx_even = torch.arange(2,n,2)
+    S[idx_odd]=S[idx_odd]*4
+    S[idx_even]=S[idx_even]*2
+    return torch.sum(S)*step_size/3.
+
+class fifo_list():
+    def __init__(self,n):
+        self.fifo_list = [0]*n
+        self.n=n
+    def insert(self,el):
+        self.fifo_list.pop(0)
+        self.fifo_list.append(el)
+    def __len__(self):
+        return len(self.fifo_list)
+
+    def get_sum(self):
+        return sum(self.fifo_list)
 
 
 class hyperopt_training():
@@ -44,6 +72,7 @@ class hyperopt_training():
         self.savedir = job_param['savedir']
         self.reg_mode = job_param['reg_mode']
         self.ibs_est_deltas = job_param['ibs_est_deltas']
+        self.use_sotle = job_param['use_sotle']
         self.global_hyperit = 0
         self.debug = False
         torch.cuda.set_device(self.device)
@@ -53,7 +82,7 @@ class hyperopt_training():
         else:
             shutil.rmtree(self.save_path)
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','reg_lambda']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','reg_lambda','T_losses']
         self.get_hyperparameterspace(hyper_param_space)
         if self.reg_mode=='ibs':
             self.reg_func = ibs_calc
@@ -88,6 +117,7 @@ class hyperopt_training():
         print(parameters_in)
         self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx)
         self.cycle_length = self.dataloader.__len__()//self.validation_interval+1
+        self.T_losses = parameters_in['T_losses']
         net_init_params = {
             'd_in_x' : self.dataloader.dataset.X.shape[1],
             'cat_size_list': self.dataloader.dataset.unique_cat_cols,
@@ -219,34 +249,59 @@ class hyperopt_training():
         timing = end-start
         return timing
 
+    def do_metrics(self,training_loss,likelihood,reg_loss,i):
+        tr_likelihood, tr_conc, tr_ibs, tr_ibll = self.train_score()
+        val_likelihood, conc, ibs, ibll = self.validation_score()
+        if self.debug:
+            test_likelihood, test_conc, test_ibs, test_inll = self.test_score()
+            self.writer.add_scalar('Loss/train', training_loss, i)
+            self.writer.add_scalar('Loss/val', val_likelihood, i)
+            self.writer.add_scalar('Loss/test', test_likelihood, i)
+            self.writer.add_scalar('conc/val', conc, i)
+            self.writer.add_scalar('conc/test', test_conc, i)
+            self.writer.add_scalar('ibs/val', ibs, i)
+            self.writer.add_scalar('ibs/test', test_ibs, i)
+            self.writer.add_scalar('inll/val', ibll, i)
+            self.writer.add_scalar('inll/test', test_inll, i)
+            print(
+                f'test_likelihood: {test_likelihood} test_conc: {test_conc} test_ibs: {test_ibs}  test_inll: {test_inll}')
+            self.debug_list.append(test_ibs)
+        if self.selection_criteria == 'train':
+            criteria = val_likelihood  # minimize #
+        elif self.selection_criteria == 'concordance':
+            criteria = -conc  # maximize
+        elif self.selection_criteria == 'ibs':
+            criteria = ibs  # minimize
+        elif self.selection_criteria == 'ibs_likelihood':
+            criteria = self.reg_lambda*ibs+val_likelihood  # minimize
+        elif self.selection_criteria == 'inll':
+            criteria = ibll  # "minimize"
+        elif self.selection_criteria == 'inll':
+            criteria = ibll  # "minimize"
+        print(f'total_loss: {training_loss} likelihood: {likelihood} reg_loss: {reg_loss}')
+        print(f'tr_likelihood: {tr_likelihood} tr_conc: {tr_conc} tr_ibs: {tr_ibs}  tr_ibll: {tr_ibll}')
+        print(f'criteria score: {criteria} val likelihood: {val_likelihood} val conc:{conc} val ibs: {ibs} val inll {ibll}')
+        return criteria
+    def eval_sotl(self,i,training_loss,likelihood,reg_loss):
+        _ = self.do_metrics(training_loss, likelihood, reg_loss, i)
+        criteria = self.sotl_e_list.get_sum()
+        print(f'SOTL epoch {i}: {criteria}')
+        if i>self.T_losses:
+            self.scheduler.step(criteria)
+            if criteria < self.best:
+                self.best = criteria
+                print('new best val score: ', self.best)
+                print('Dumping model')
+                self.dump_model()
+                self.counter = 0
+            else:
+                self.counter += 1
+            if self.counter > self.patience:
+                return True
+
     def eval_func(self,i,training_loss,likelihood,reg_loss):
         if i % self.cycle_length == 0:
-            val_likelihood, conc, ibs, inll = self.validation_score()
-            if self.debug:
-                test_likelihood, test_conc, test_ibs, test_inll = self.test_score()
-                self.writer.add_scalar('Loss/train', training_loss, i)
-                self.writer.add_scalar('Loss/val', val_likelihood, i)
-                self.writer.add_scalar('Loss/test', test_likelihood, i)
-                self.writer.add_scalar('conc/val', conc, i)
-                self.writer.add_scalar('conc/test', test_conc, i)
-                self.writer.add_scalar('ibs/val', ibs, i)
-                self.writer.add_scalar('ibs/test', test_ibs, i)
-                self.writer.add_scalar('inll/val', inll, i)
-                self.writer.add_scalar('inll/test', test_inll, i)
-                print('test:', test_likelihood, test_conc, test_ibs, test_inll)
-            if self.selection_criteria == 'train':
-                criteria = val_likelihood  # minimize #
-            elif self.selection_criteria == 'concordance':
-                criteria = -conc  # maximize
-            elif self.selection_criteria == 'ibs':
-                criteria = ibs  # minimize
-            elif self.selection_criteria == 'inll':
-                criteria = inll  # maximize
-            print(f'total_loss: {training_loss} likelihood: {likelihood} reg_loss: {reg_loss}')
-            print('criteria score: ', criteria)
-            print('val conc', conc)
-            print('val ibs', ibs)
-            print('val inll', inll)
+            criteria = self.do_metrics(training_loss,likelihood,reg_loss,i)
             self.scheduler.step(criteria)
             if criteria < self.best:
                 self.best = criteria
@@ -268,7 +323,8 @@ class hyperopt_training():
         gt = self.dataloader.dataset.t_kmf[indices,:].t().to(self.device)
         t = self.dataloader.dataset.times[indices,:].t().to(self.device)
         mask_1 = (y<=t)*delta.unsqueeze(-1)
-        mask_2 = y>t
+        mask_2 = (y>t).float()
+        # mask_2 = (y>t)
         grid_size = t.shape[1]
         if not isinstance(x_cat, list):
             x_cat_repeat = x_cat.repeat_interleave(grid_size, 0)
@@ -279,15 +335,15 @@ class hyperopt_training():
         S = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)
         S = S.view(-1, grid_size) #bs x gridsize
         S = self.reg_func(S=S,mask_1=mask_1,mask_2=mask_2,gst=gst,gt=gt)
-        S[:,0]=S[:,0]/2.
-        S[:,-1]=S[:,-1]/2.
-        return torch.mean(S.sum(dim=1)*step_size)
+        S = S.mean(dim=0)# mean across observations, time to integrate!
+        return simpsons_composite(S,step_size,100)
 
-    def training_loop(self):
+    def training_loop(self,epoch):
         self.dataloader.dataset.set(mode='train')
         total_loss_train=0.
         tot_likelihood=0.
         tot_reg_loss=0.
+        sotl_estimator_total_loss=[]
         self.model = self.model.train()
         for i,(X,x_cat,y,delta,s_kmf) in enumerate(tqdm(self.dataloader)):
             X = X.to(self.device)
@@ -309,14 +365,23 @@ class hyperopt_training():
                 if self.reg_mode == 'ibll':
                     reg_loss = -reg_loss
             loss =self.train_objective(S,f)
-            total_loss = reg_loss#loss + self.reg_lambda*reg_loss
+            # total_loss =reg_loss #loss + self.reg_lambda*reg_loss
+            total_loss =loss + self.reg_lambda*reg_loss
             self.optimizer.zero_grad()
             total_loss.backward()
             self.optimizer.step()
             total_loss_train+=total_loss.detach()
             tot_likelihood+=loss.detach()
             tot_reg_loss+=reg_loss.detach()
-            if self.eval_func(i,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
+            if not self.use_sotle:
+                if self.eval_func(i,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
+                    return True
+            else:
+                sotl_estimator_total_loss.append(total_loss.detach().item())
+        if self.use_sotle:
+            mean_loss = sum(sotl_estimator_total_loss)/len(sotl_estimator_total_loss)
+            self.sotl_e_list.insert(mean_loss)
+            if self.eval_sotl(epoch,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
                 return True
         return False
 
@@ -444,6 +509,12 @@ class hyperopt_training():
         val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
         return val_likelihood.item(),conc,ibs,inll
 
+    def train_score(self):
+        self.dataloader.dataset.set(mode='train')
+        if self.dataset_string=='kkbox':
+            return self.eval_loop_kkbox(self.grid_size)
+        else:
+            return self.eval_loop(self.grid_size)
     def validation_score(self):
         self.dataloader.dataset.set(mode='val')
         if self.dataset_string=='kkbox':
@@ -463,11 +534,15 @@ class hyperopt_training():
     def full_loop(self):
         self.counter = 0
         self.best = np.inf
+        self.sotl_e_list = fifo_list(n=self.T_losses)
         if self.debug:
             self.writer =SummaryWriter()
+            self.debug_list = []
         for i in range(self.total_epochs):
-            if self.training_loop():
+            if self.training_loop(i):
                 break
+        if self.debug:
+            print(f'best test ibs {min(self.debug_list)}')
         self.load_model()
         val_likelihood,val_conc,val_ibs,val_inll = self.validation_score()
         test_likelihood,test_conc,test_ibs,test_inll = self.test_score()
@@ -486,6 +561,9 @@ class hyperopt_training():
         elif self.selection_criteria == 'ibs':
             criteria = val_ibs
             criteria_test = test_ibs
+        elif self.selection_criteria == 'ibs_likelihood':
+            criteria = self.reg_lambda*val_ibs+val_likelihood  # minimize
+            criteria_test = test_ibs * self.reg_lambda  + test_likelihood
         elif self.selection_criteria == 'inll':
             criteria = val_inll
             criteria_test = test_inll
@@ -526,10 +604,11 @@ class hyperopt_training():
             reverse = False
         elif self.selection_criteria == 'concordance':
             reverse = True
-        elif self.selection_criteria == 'ibs':
+        elif self.selection_criteria in ['ibs','ibs_likelihood']:
             reverse = False
         elif self.selection_criteria == 'inll':
             reverse = False
+
         best_trial = sorted(trials.results, key=lambda x: x['test_loss'], reverse=reverse)[0] #low to high
         data = [best_trial['test_loglikelihood'],best_trial['test_conc'],best_trial['test_ibs'],best_trial['test_inll'],
                 best_trial['val_loglikelihood'],best_trial['val_conc'],best_trial['val_ibs'],best_trial['val_inll']]

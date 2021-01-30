@@ -11,6 +11,11 @@ from sklearn.model_selection import StratifiedKFold
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 from lifelines import KaplanMeierFitter
+import pycox.utils as utils
+
+def calc_km(durations,events):
+    km = utils.kaplan_meier(durations, 1 - events)
+    return km
 
 class LogTransformer(BaseEstimator, TransformerMixin): #Scaling is already good. This leaves network architecture...
     def __init__(self):
@@ -110,8 +115,8 @@ class surival_dataset(Dataset):
         c = OrderedCategoricalLong()
         for el in cat_cols:
             df_full[el] = c.fit_transform(df_full[el])
-        standardize = [([col], MinMaxScaler()) for col in cont_cols]
-        leave = [(col, None) for col in binary_cols]
+        standardize = [([col], StandardScaler()) for col in cont_cols]
+        leave = [([col], StandardScaler()) for col in binary_cols]
         self.cat_cols = cat_cols
         self.x_mapper = DataFrameMapper(standardize+leave)
         self.duration_mapper = MinMaxScaler()
@@ -150,11 +155,12 @@ class surival_dataset(Dataset):
     def split(self,X,delta,y,cat=[],mode='train',df=[]):
         min_dur,max_dur = y.min(),y.max()
         times = np.linspace(min_dur,max_dur,100)
+        d = delta.values
+        s_kmf_ref=calc_km(y.squeeze(),d)
         kmf = KaplanMeierFitter()
-        kmf.fit(y,delta)
+        kmf.fit(y,1-delta)
         s_kmf = kmf.predict(y.squeeze()).values
         t_kmf = kmf.predict(times).values
-        setattr(self,f'{mode}_kmf',kmf)
         setattr(self,f'{mode}_times', torch.from_numpy(times.astype('float32')).float().unsqueeze(-1))
         setattr(self,f'{mode}_s_kmf', torch.from_numpy(s_kmf.astype('float32')).float().unsqueeze(-1))
         setattr(self,f'{mode}_t_kmf', torch.from_numpy(t_kmf.astype('float32')).float().unsqueeze(-1))

@@ -22,24 +22,25 @@ if __name__ == '__main__':
     # eval more frequently...
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
-        'bounding_op': [torch.nn.ReLU(),],  # torch.sigmoid, torch.relu, torch.exp,
-        'transformation': [torch.nn.functional.tanh],
-        'depth_x': [1],
+        'bounding_op': [square,],  # torch.sigmoid, torch.relu, torch.exp,
+        'transformation': [torch.nn.Tanh()],
+        'depth_x': [2],
         'width_x': [32], #adapt for smaller time net
         'depth_t': [2],
-        'width_t': [16], #ads
+        'width_t': [32], #ads
         'depth': [2],
         'width': [32],
         'bs': [500],
         'lr': [1e-2],
         'direct_dif': ['autograd'],
-        'dropout': [0.5],
+        'dropout': [0.2],
         'eps':[1e-3],
         'weight_decay':[0.],
-        'reg_lambda':[1.0]
+        'reg_lambda':[1.0],
+        'T_losses':[90]
 
     }
-    for i in [0]:
+    for i in [1]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -48,21 +49,21 @@ if __name__ == '__main__':
             'd_out': 1,
             'dataset_string': datasets[i],
             'seed': 1337,#,np.random.randint(0,9999),
-            'eval_metric': 'ibs',
             'total_epochs': 5000,
             'device': device,
-            'patience': 50,
+            'patience': 200,
             'hyperits': 1,
-            'selection_criteria':'ibs',
+            'selection_criteria':'ibs_likelihood',
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':10,
             'net_type':'survival_net',
             'objective': 'S_mean',
-            'fold_idx':3,
+            'fold_idx':0 ,
             'savedir':'test',
             'reg_mode':'ibs',
-            'ibs_est_deltas':100
+            'ibs_est_deltas':100,
+            'use_sotle':False
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         training_obj.debug=True

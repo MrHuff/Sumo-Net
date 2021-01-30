@@ -20,8 +20,8 @@ def generate_job_params(directory='job_dir/'):
         'dataset': 0,
         'seed':1337,
         'total_epochs':500,
-        'patience':25,
-        'hyperits':30,
+        'patience':100,
+        'hyperits':20,
         'eval_metric':2,
         'grid_size':100,
         'test_grid_size': 100,
@@ -29,14 +29,18 @@ def generate_job_params(directory='job_dir/'):
         'loss_type':0,
         'net_type':'ocean_net',
         'fold_idx': 0,
-        'savedir':'ibs_exp_test',
+        'savedir':'new_reg_test_ibs_3',
         'direct_dif': ['autograd'],
+        'reg_mode': 'ibs',
+        'ibs_est_deltas': 100,
+        'use_sotle': False
+
     }
     counter = 0
     for fold_idx in [0,1,2,3,4]:
         for dataset in [0,1,2,3]:
-            for l_type in [0,1]:
-                for net_t in ['survival_net_basic','survival_net']:
+            for l_type in [0]:
+                for net_t in ['survival_net']:
                     base_dict['dataset']=dataset
                     base_dict['loss_type']=l_type
                     base_dict['net_type']=net_t
@@ -45,4 +49,4 @@ def generate_job_params(directory='job_dir/'):
                     counter +=1
 
 if __name__ == '__main__':
-        generate_job_params(directory='job_ibs_exp_test/')
+        generate_job_params(directory='job_new_reg_test_ibs_3/')

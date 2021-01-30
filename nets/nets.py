@@ -73,9 +73,11 @@ class nn_node(torch.nn.Module): #Add dropout layers, Do embedding layer as well!
     def forward(self,X,x_cat=[]):
         if not isinstance(x_cat,list):
             seq = torch.unbind(x_cat,1)
+            cat_vals = [X]
             for i,f in enumerate(seq):
                 o = getattr(self,f'embedding_{i}')(f)
-                X = torch.cat([X,o],dim=1)
+                cat_vals.append(o)
+            X = torch.cat(cat_vals,dim=1)
         return self.dropout(self.f(self.w(X)))
 
 class bounded_nn_layer(torch.nn.Module): #Add dropout layers
@@ -123,6 +125,21 @@ class mixed_layer_all(torch.nn.Module): #Add dropout layers
 
     def forward(self,X,x_cat,x_bounded):
         return  self.f(x_bounded @ self.bounding_op(self.pos_weights) + self.bias + self.x_node(X,x_cat))
+
+class mixed_layer_2(torch.nn.Module): #Add dropout layers
+    def __init__(self, d_in, d_in_bounded, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
+        super(mixed_layer_2, self).__init__()
+        self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out//2)), requires_grad=True)
+        self.f = transformation
+        self.bounding_op = bounding_op
+        self.bias = torch.nn.Parameter(torch.randn(d_out//2), requires_grad=True)
+        self.w = torch.nn.Linear(d_in,d_out//2)
+
+    def forward(self,X,x_bounded):
+        bounded_part = x_bounded @ self.bounding_op(self.pos_weights) + self.bias
+        regular_part = self.w(X)
+        return self.f( torch.cat([bounded_part,regular_part],dim=1))
+
 
 
 class survival_net_nocov(torch.nn.Module):
@@ -254,7 +271,7 @@ class survival_net_basic(torch.nn.Module):
 
     def init_middle_net(self, dx_in, d_in_y, d_out, layers, transformation, bounding_op):
         # self.mixed_layer = mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], transformation=transformation, bounding_op=bounding_op,dropout=dropout)
-        module_list = [mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], bounding_op=bounding_op,
+        module_list = [mixed_layer_2(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], bounding_op=bounding_op,
                                    transformation=transformation)]
         for l_i in range(1,len(layers)):
             module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
@@ -393,7 +410,7 @@ class survival_net(torch.nn.Module):
 
     def init_middle_net(self, dx_in, d_in_y, d_out, layers, transformation, bounding_op):
         # self.mixed_layer = mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], transformation=transformation, bounding_op=bounding_op,dropout=dropout)
-        module_list = [mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], bounding_op=bounding_op,
+        module_list = [mixed_layer_2(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], bounding_op=bounding_op,
                                    transformation=transformation)]
         for l_i in range(1,len(layers)):
             module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
