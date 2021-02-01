@@ -43,10 +43,10 @@ def get_best_params(path,selection_criteria):
 
 
 if __name__ == '__main__':
-    folder = 'ibs_eval'
-    objective = ['S_mean','hazard_mean']
+    folder = 'new_reg_test_ibs_5_ablation'
+    objective = ['S_mean']
     criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
-    model = ['survival_net_basic']
+    model = ['survival_net','survival_net_basic']
     result_name = f'{folder}_results'
     c = criteria[2]
     cols = ['objective','model','dataset']
@@ -54,14 +54,14 @@ if __name__ == '__main__':
         cols.append(criteria_name+'_mean')
         cols.append(criteria_name+'_std')
     df = []
-    dataset_indices = [4]
+    dataset_indices = [1]
     for o in objective:
         for net_type in model:
             for d in dataset_indices:
                 d_str = datasets[d]
                 row = [o,net_type,d_str]
                 desc_df = []
-                for s in [1337]:
+                for s in [9001]:
                     for f_idx in [0,1,2,3,4]:
                         try:
                     # get_best_params(f'./{d_str}_{s}/hyperopt_database.p',c)

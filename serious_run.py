@@ -37,8 +37,8 @@ eval_metrics = [
 'ibs',
 'inll'
 ]
-dataset_bs =[[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[1000,2500,5000],[50,100,250,500,1000,2500],[50,100,250,500,1000,2500],[50,100,250,500,1000,2500]]
-# dataset_bs =[[25,50,100,250],[5,10,25,50,100],[5,10,25,50,100],[5,10,25,50,100],[1000,2500,5000],[64,128,256,512,1024],[64,128,256,512,1024],[64,128,256,512,1024]]
+# dataset_bs =[[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[100,250,500,1000],[1000,2500,5000],[50,100,250,500,1000,2500],[50,100,250,500,1000,2500],[50,100,250,500,1000,2500]]
+dataset_bs =[[25,50,100,250],[5,10,25,50,100],[5,10,25,50,100],[5,10,25,50,100],[1000,2500,5000],[64,128,256,512,1024],[64,128,256,512,1024],[64,128,256,512,1024]]
 dataset_d_x =[[1, 2], [1, 2], [1, 2], [1, 2], [4, 6, 8], [1, 2], [1, 2], [1, 2]]
 dataset_d =[[1, 2], [1, 2], [1, 2], [1, 2], [1, 2], [1, 2,4], [1, 2,4], [1, 2,4]]
 dataset_w_x =[[16, 32], [16, 32], [16, 32], [16, 32], [128, 256, 512], [8, 16, 32,64], [8, 16, 32,64], [8, 16, 32,64]]
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     bs = dataset_bs[args['dataset']]
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
-        'bounding_op': [torch.exp],  # torch.sigmoid, torch.relu, torch.exp,
+        'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.functional.tanh],
         'depth_x': d_x,
         'width_x': w_x,
@@ -93,7 +93,7 @@ if __name__ == '__main__':
         'device': device,
         'patience': args['patience'],
         'hyperits':  args['hyperits'],
-        'selection_criteria': 'ibs_likelihood',
+        'selection_criteria': 'ibs',
         'grid_size':args['grid_size'],
         'test_grid_size': args['test_grid_size'],
         'validation_interval': args['validation_interval'],

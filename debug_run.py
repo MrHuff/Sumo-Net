@@ -22,19 +22,19 @@ if __name__ == '__main__':
     # eval more frequently...
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
-        'bounding_op': [square,],  # torch.sigmoid, torch.relu, torch.exp,
+        'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.Tanh()],
         'depth_x': [2],
         'width_x': [32], #adapt for smaller time net
-        'depth_t': [2],
-        'width_t': [32], #ads
-        'depth': [2],
+        'depth_t': [3],
+        'width_t': [1], #ads
+        'depth': [1],
         'width': [32],
-        'bs': [500],
+        'bs': [100],
         'lr': [1e-2],
         'direct_dif': ['autograd'],
-        'dropout': [0.2],
-        'eps':[1e-3],
+        'dropout': [0.0],
+        'eps':[1e-4],
         'weight_decay':[0.],
         'reg_lambda':[1.0],
         'T_losses':[90]
@@ -48,12 +48,12 @@ if __name__ == '__main__':
         job_params = {
             'd_out': 1,
             'dataset_string': datasets[i],
-            'seed': 1337,#,np.random.randint(0,9999),
+            'seed': 9001,#,np.random.randint(0,9999),
             'total_epochs': 5000,
             'device': device,
             'patience': 200,
             'hyperits': 1,
-            'selection_criteria':'ibs_likelihood',
+            'selection_criteria':'ibs',
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':10,

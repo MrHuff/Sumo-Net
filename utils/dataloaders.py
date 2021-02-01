@@ -115,8 +115,8 @@ class surival_dataset(Dataset):
         c = OrderedCategoricalLong()
         for el in cat_cols:
             df_full[el] = c.fit_transform(df_full[el])
-        standardize = [([col], StandardScaler()) for col in cont_cols]
-        leave = [([col], StandardScaler()) for col in binary_cols]
+        standardize = [([col], MinMaxScaler()) for col in cont_cols]
+        leave = [(col,None) for col in binary_cols]
         self.cat_cols = cat_cols
         self.x_mapper = DataFrameMapper(standardize+leave)
         self.duration_mapper = MinMaxScaler()

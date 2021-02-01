@@ -372,7 +372,10 @@ class hyperopt_training():
             self.optimizer.step()
             total_loss_train+=total_loss.detach()
             tot_likelihood+=loss.detach()
-            tot_reg_loss+=reg_loss.detach()
+            if self.reg_mode in ['ibs','ibll']:
+                tot_reg_loss+=reg_loss.detach()
+            else:
+                tot_reg_loss+=0.0
             if not self.use_sotle:
                 if self.eval_func(i,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
                     return True

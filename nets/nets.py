@@ -410,7 +410,7 @@ class survival_net(torch.nn.Module):
 
     def init_middle_net(self, dx_in, d_in_y, d_out, layers, transformation, bounding_op):
         # self.mixed_layer = mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], transformation=transformation, bounding_op=bounding_op,dropout=dropout)
-        module_list = [mixed_layer_2(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], bounding_op=bounding_op,
+        module_list = [mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], bounding_op=bounding_op,
                                    transformation=transformation)]
         for l_i in range(1,len(layers)):
             module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
