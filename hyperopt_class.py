@@ -30,7 +30,11 @@ def ibs_calc(S,mask_1,mask_2,gst,gt):
     return ((S**2)*mask_1)*weights_1 + ((1.-S)**2 * mask_2)*weights_2
 
 def ibll_calc(S,mask_1,mask_2,gst,gt):
-    return ((torch.log(1-S))*mask_1)/gst + ((torch.log(S)) * mask_2)/gt
+    weights_2 = 1./gt
+    weights_2[weights_2==float("Inf")]=0.0
+    weights_1 = 1./gst
+    weights_1[weights_1==float("Inf")]=0.0
+    return ((torch.log(1-S+1e-6))*mask_1)*weights_1 + ((torch.log(S+1e-6)) * mask_2)*weights_2
 
 def simpsons_composite(S,step_size,n):
     idx_odd = torch.arange(1,n-1,2)
@@ -92,7 +96,7 @@ class hyperopt_training():
     def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
         val_likelihood = self.train_objective(S,f)
         eval_obj = EvalSurv(surv=S_extended,durations=durations,events=events,censor_surv='km') #Add index and pass as DF
-        conc = eval_obj.concordance_td('antolini')
+        conc = eval_obj.concordance_td()
         ibs = eval_obj.integrated_brier_score(time_grid)
         inll = eval_obj.integrated_nbll(time_grid)
         return val_likelihood,conc,ibs,inll
@@ -102,7 +106,7 @@ class hyperopt_training():
         t_grid_np = np.linspace(y.min(), y.max(), surv.index.shape[0])
         surv = surv.set_index(t_grid_np)
         ev = EvalSurv(surv=surv, durations=y, events=events, censor_surv='km')
-        conc = ev.concordance_td('antolini')
+        conc = ev.concordance_td()
         ibs = ev.integrated_brier_score(t_grid_np)
         inll = ev.integrated_nbll(t_grid_np)
         return conc,ibs,inll
@@ -117,6 +121,7 @@ class hyperopt_training():
         print(parameters_in)
         self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx)
         self.cycle_length = self.dataloader.__len__()//self.validation_interval+1
+        print('cycle_length',self.cycle_length)
         self.T_losses = parameters_in['T_losses']
         net_init_params = {
             'd_in_x' : self.dataloader.dataset.X.shape[1],
@@ -250,7 +255,6 @@ class hyperopt_training():
         return timing
 
     def do_metrics(self,training_loss,likelihood,reg_loss,i):
-        tr_likelihood, tr_conc, tr_ibs, tr_ibll = self.train_score()
         val_likelihood, conc, ibs, ibll = self.validation_score()
         if self.debug:
             test_likelihood, test_conc, test_ibs, test_inll = self.test_score()
@@ -279,7 +283,9 @@ class hyperopt_training():
         elif self.selection_criteria == 'inll':
             criteria = ibll  # "minimize"
         print(f'total_loss: {training_loss} likelihood: {likelihood} reg_loss: {reg_loss}')
-        print(f'tr_likelihood: {tr_likelihood} tr_conc: {tr_conc} tr_ibs: {tr_ibs}  tr_ibll: {tr_ibll}')
+        if self.dataset_string!='kkbox':
+            tr_likelihood, tr_conc, tr_ibs, tr_ibll = self.train_score()
+            print(f'tr_likelihood: {tr_likelihood} tr_conc: {tr_conc} tr_ibs: {tr_ibs}  tr_ibll: {tr_ibll}')
         print(f'criteria score: {criteria} val likelihood: {val_likelihood} val conc:{conc} val ibs: {ibs} val inll {ibll}')
         return criteria
     def eval_sotl(self,i,training_loss,likelihood,reg_loss):
@@ -338,6 +344,30 @@ class hyperopt_training():
         S = S.mean(dim=0)# mean across observations, time to integrate!
         return simpsons_composite(S,step_size,100)
 
+    def calculate_conc_reg_loss(self,X,x_cat,y,delta):
+        ev = delta==1
+        X_i = X[ev,:]
+        z_i = y[ev,:]
+        mask = (z_i<y.t())
+        rep_int = mask.sum(dim=1)
+        idx = mask.flatten()
+        divisor = torch.sum(idx)
+        n_rep = torch.sum(ev).item()
+        X_rep = X.repeat(n_rep,1)[idx,:]
+        y_rep = z_i.repeat_interleave(rep_int,0)
+        if not isinstance(x_cat, list):
+            x_cat_i = x_cat[ev,:]
+            x_cat_rep = x_cat.repeat(n_rep,1)[idx,:]
+        else:
+            x_cat_i = []
+            x_cat_rep = []
+        S_i = self.model.forward_S_eval(X_i,z_i,x_cat_i).repeat_interleave(rep_int,dim=0)
+        S_j = self.model.forward_S_eval(X_rep,y_rep,x_cat_rep)
+        return torch.sum(S_i<S_j)/divisor
+
+
+
+
     def training_loop(self,epoch):
         self.dataloader.dataset.set(mode='train')
         total_loss_train=0.
@@ -362,8 +392,10 @@ class hyperopt_training():
             reg_loss = 0.0
             if self.reg_mode in ['ibs','ibll']:
                 reg_loss = self.calculate_reg_loss(X=X,x_cat=x_cat,y=y,delta=delta,gst=s_kmf)
-                if self.reg_mode == 'ibll':
-                    reg_loss = -reg_loss
+            elif self.reg_mode == 'conc':
+                reg_loss = self.calculate_conc_reg_loss(X=X,x_cat=x_cat,y=y,delta=delta)
+            if self.reg_mode in ['ibll','conc']:
+                reg_loss = -1*reg_loss
             loss =self.train_objective(S,f)
             # total_loss =reg_loss #loss + self.reg_lambda*reg_loss
             total_loss =loss + self.reg_lambda*reg_loss
@@ -372,7 +404,7 @@ class hyperopt_training():
             self.optimizer.step()
             total_loss_train+=total_loss.detach()
             tot_likelihood+=loss.detach()
-            if self.reg_mode in ['ibs','ibll']:
+            if self.reg_mode in ['ibs','ibll','conc']:
                 tot_reg_loss+=reg_loss.detach()
             else:
                 tot_reg_loss+=0.0

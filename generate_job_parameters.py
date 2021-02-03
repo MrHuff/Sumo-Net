@@ -18,29 +18,29 @@ def generate_job_params(directory='job_dir/'):
         os.makedirs(directory)
     base_dict={
         'dataset': 0,
-        'seed':9001,
-        'total_epochs':500,
-        'patience':100,
+        'seed':1337,
+        'total_epochs':100,
+        'patience':10,
         'hyperits':30,
         'eval_metric':2,
         'grid_size':100,
         'test_grid_size': 100,
-        'validation_interval':10,
+        'validation_interval':3,
         'loss_type':0,
         'net_type':'ocean_net',
         'fold_idx': 0,
-        'savedir':'new_reg_test_ibs_5',
+        'savedir':'conc_test',
         'direct_dif': ['autograd'],
-        'reg_mode': 'ibs',
+        'reg_mode': 'conc',
         'ibs_est_deltas': 100,
         'use_sotle': False,
 
     }
     counter = 0
     for fold_idx in [0,1,2,3,4]:
-        for dataset in [0,2,3]:
+        for dataset in [1]:
             for l_type in [0]:
-                for net_t in ['survival_net','survival_net_basic']:
+                for net_t in ['survival_net_basic']:
                     base_dict['dataset']=dataset
                     base_dict['loss_type']=l_type
                     base_dict['net_type']=net_t
@@ -49,4 +49,4 @@ def generate_job_params(directory='job_dir/'):
                     counter +=1
 
 if __name__ == '__main__':
-        generate_job_params(directory='job_new_reg_test_ibs_6/')
+        generate_job_params(directory='job_conc_test/')
