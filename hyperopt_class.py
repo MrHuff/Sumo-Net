@@ -363,7 +363,7 @@ class hyperopt_training():
             x_cat_rep = []
         S_i = self.model.forward_S_eval(X_i,z_i,x_cat_i).repeat_interleave(rep_int,dim=0)
         S_j = self.model.forward_S_eval(X_rep,y_rep,x_cat_rep)
-        return torch.sum(S_i<S_j)/divisor
+        return torch.sum(torch.ceil(torch.relu(S_j-S_i)))/divisor
 
 
 
