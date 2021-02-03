@@ -29,7 +29,7 @@ def generate_job_params(directory='job_dir/'):
         'loss_type':0,
         'net_type':'ocean_net',
         'fold_idx': 0,
-        'savedir':'conc_test',
+        'savedir':'conc_test_1',
         'direct_dif': ['autograd'],
         'reg_mode': 'conc',
         'ibs_est_deltas': 100,

@@ -77,7 +77,7 @@ if __name__ == '__main__':
         'direct_dif': [args['direct_dif']],
         'dropout': [0.0,0.1,0.2,0.3,0.4,0.5], #[0.0,0.7]
         'eps': [1e-3,1e-4,1e-5],
-        'weight_decay': [1e-3,1e-4,1e-2,0.1,0],
+        'weight_decay': [0.0],
         'reg_lambda': [2.0,1.0,0.5,0.1],
         'T_losses': [90]
 
