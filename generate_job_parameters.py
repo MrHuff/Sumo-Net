@@ -29,17 +29,17 @@ def generate_job_params(directory='job_dir/'):
         'loss_type':0,
         'net_type':'ocean_net',
         'fold_idx': 0,
-        'savedir':'conc_test',
+        'savedir':'results',
         'direct_dif': ['autograd'],
-        'reg_mode': 'conc',
+        'reg_mode': None,
         'ibs_est_deltas': 100,
         'use_sotle': False,
 
     }
     counter = 0
     for fold_idx in [0,1,2,3,4]:
-        for dataset in [1]:
-            for l_type in [0]:
+        for dataset in [0,1,2,3,4]:
+            for l_type in [0,1]:
                 for net_t in ['survival_net_basic']:
                     base_dict['dataset']=dataset
                     base_dict['loss_type']=l_type
@@ -49,4 +49,4 @@ def generate_job_params(directory='job_dir/'):
                     counter +=1
 
 if __name__ == '__main__':
-        generate_job_params(directory='job_conc_test/')
+        generate_job_params(directory='job/')
