@@ -13,6 +13,15 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from lifelines import KaplanMeierFitter
 import pycox.utils as utils
 
+class tooth_dataset():
+    def __init__(self,variant):
+        self.load_path = f'./{variant}/'
+        self.col_event = 'event'
+        self.col_duration = 'duration'
+
+    def read_df(self):
+        df = pd.read_csv(self.load_path+'data.csv')
+        return df
 def calc_km(durations,events):
     km = utils.kaplan_meier(durations, 1 - events)
     return km
@@ -58,58 +67,25 @@ class surival_dataset(Dataset):
     def __init__(self,str_identifier,seed=1337,fold_idx=0):
         print('fold_idx: ', fold_idx)
         super(surival_dataset, self).__init__()
-        if str_identifier=='support':
+        if str_identifier=='essIncData':
             data = support
             cont_cols = ['x0','x3','x7','x8','x9','x10','x11','x12','x13']
             binary_cols = ['x1','x4','x5']
             cat_cols = ['x2','x6']
 
-        elif str_identifier=='metabric':
+        elif str_identifier=='tooth':
             data = metabric
             cont_cols = ['x0', 'x1', 'x2', 'x3', 'x8']
             binary_cols = ['x4', 'x5', 'x6', 'x7']
             cat_cols = []
 
-        elif str_identifier=='gbsg':
-            data = gbsg
-            cont_cols = ['x3','x4','x5','x6']
-            binary_cols = ['x0', 'x2']
-            cat_cols = ['x1']
-        elif str_identifier == 'flchain':
-            data = flchain
-            cont_cols = ['sample.yr','age','kappa','lambda','creatinine']
-            binary_cols = ['sex','mgus']
-            cat_cols = ['flc.grp']
-        elif str_identifier=='kkbox':
-            data = kkbox
-            cont_cols = ['n_prev_churns','log_days_between_subs','log_days_since_reg_init','log_payment_plan_days','log_plan_list_price','log_actual_amount_paid','age_at_start']
-            binary_cols = ['is_auto_renew','is_cancel','strange_age','nan_days_since_reg_init','no_prev_churns']
-            cat_cols = ['city','payment_method_id','gender','registered_via']
-        elif str_identifier=='weibull':
-            data = toy_data_class(str_identifier)
-            cont_cols = ['x1']
-            binary_cols = []
-            cat_cols = []
-        elif str_identifier=='checkboard':
-            data = toy_data_class(str_identifier)
-            cont_cols = ['x1']
-            binary_cols = []
-            cat_cols = []
-        elif str_identifier=='normal':
-            data = toy_data_class(str_identifier)
-            cont_cols = ['x1']
-            binary_cols = []
-            cat_cols = []
+
         df_full = data.read_df()
         df_full = df_full.dropna()
 
-        if str_identifier=='kkbox':
-            self.event_col = 'event'
-            self.duration_col = 'duration'
-            df_full = df_full.drop(['msno'],axis=1)
-        else:
-            self.event_col = data.col_event
-            self.duration_col = data.col_duration
+
+        self.event_col = data.col_event
+        self.duration_col = data.col_duration
         print(f'{str_identifier} max',df_full[self.duration_col].max())
         print(f'{str_identifier} min',df_full[self.duration_col].min())
         c = OrderedCategoricalLong()
@@ -155,7 +131,6 @@ class surival_dataset(Dataset):
     def split(self,X,delta,y,cat=[],mode='train',df=[]):
         min_dur,max_dur = y.min(),y.max()
         times = np.linspace(min_dur,max_dur,100)
-        d = delta.values
         kmf = KaplanMeierFitter()
         kmf.fit(y,1-delta)
         s_kmf = kmf.predict(y.squeeze()).values
