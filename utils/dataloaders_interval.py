@@ -14,14 +14,25 @@ from lifelines import KaplanMeierFitter
 import pycox.utils as utils
 
 class tooth_dataset():
-    def __init__(self,variant):
-        self.load_path = f'./{variant}/'
-        self.col_event = 'event'
-        self.col_duration = 'duration'
+    def __init__(self):
+        self.load_path = f'tooth.csv'
+        self.left_int = 'left'
+        self.right_int = 'rightInf'
 
     def read_df(self):
-        df = pd.read_csv(self.load_path+'data.csv')
+        df = pd.read_csv(self.load_path,index_col=0)
         return df
+
+class essIncData_dataset():
+    def __init__(self):
+        self.load_path = f'essIncData.csv'
+        self.left_int = 'inc_l'
+        self.right_int = 'inc_u'
+
+    def read_df(self):
+        df = pd.read_csv(self.load_path,index_col=0)
+        return df
+
 def calc_km(durations,events):
     km = utils.kaplan_meier(durations, 1 - events)
     return km
@@ -63,31 +74,32 @@ pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
 
 
-class surival_dataset(Dataset):
+class surival_dataset_interval(Dataset):
     def __init__(self,str_identifier,seed=1337,fold_idx=0):
         print('fold_idx: ', fold_idx)
-        super(surival_dataset, self).__init__()
+        super(surival_dataset_interval, self).__init__()
         if str_identifier=='essIncData':
-            data = support
-            cont_cols = ['x0','x3','x7','x8','x9','x10','x11','x12','x13']
-            binary_cols = ['x1','x4','x5']
-            cat_cols = ['x2','x6']
+            data = essIncData_dataset()
+            cont_cols = []
+            binary_cols = []
+            cat_cols = ['cntry','eduLevel']
 
         elif str_identifier=='tooth':
-            data = metabric
-            cont_cols = ['x0', 'x1', 'x2', 'x3', 'x8']
-            binary_cols = ['x4', 'x5', 'x6', 'x7']
-            cat_cols = []
-
+            data = tooth_dataset()
+            cont_cols = []
+            binary_cols = []
+            cat_cols = ['sex', 'dmf']
 
         df_full = data.read_df()
         df_full = df_full.dropna()
+        df_full =df_full.replace([np.inf, -np.inf], np.nan)
 
-
-        self.event_col = data.col_event
-        self.duration_col = data.col_duration
-        print(f'{str_identifier} max',df_full[self.duration_col].max())
-        print(f'{str_identifier} min',df_full[self.duration_col].min())
+        self.left_int = data.left_int
+        self.right_int = data.right_int
+        self.inf_marker = 'is_inf_bool'
+        df_full[self.inf_marker] = np.isnan(df_full[self.right_int])
+        print(f'{str_identifier} max',df_full[self.right_int].max())
+        print(f'{str_identifier} min',df_full[self.left_int].min())
         c = OrderedCategoricalLong()
         for el in cat_cols:
             df_full[el] = c.fit_transform(df_full[el])
@@ -95,8 +107,6 @@ class surival_dataset(Dataset):
         leave = [(col,None) for col in binary_cols]
         self.cat_cols = cat_cols
         self.x_mapper = DataFrameMapper(standardize+leave)
-        self.duration_mapper = MinMaxScaler()
-
         if self.cat_cols:
             self.unique_cat_cols = df_full[cat_cols].max(axis=0).tolist()
             self.unique_cat_cols = [el+1 for el in self.unique_cat_cols]
@@ -107,56 +117,65 @@ class surival_dataset(Dataset):
             self.unique_cat_cols = []
 
         folder = StratifiedKFold(n_splits=5,  shuffle=True, random_state=seed)
-        splits = list(folder.split(df_full,df_full[self.event_col]))
+        splits = list(folder.split(df_full,df_full[self.inf_marker]))
         tr_idx,tst_idx = splits[fold_idx]
         df_train = df_full.iloc[tr_idx,:]
         df_test = df_full.iloc[tst_idx,:]
-        df_train, df_val, _, _ = train_test_split(df_train, df_train[self.event_col], test_size = 0.25,stratify=df_train[self.event_col])
+        df_train, df_val, _, _ = train_test_split(df_train, df_train[self.left_int], test_size = 0.25,stratify=df_train[self.inf_marker])
+        if cont_cols or binary_cols:
+            self.regular_X = True
+            x_train = self.x_mapper.fit_transform(df_train[cont_cols+binary_cols]).astype('float32')
+            x_val = self.x_mapper.transform(df_val[cont_cols+binary_cols]).astype('float32')
+            x_test = self.x_mapper.transform(df_test[cont_cols+binary_cols]).astype('float32')
+        else:
+            self.regular_X = False
+            x_train = []
+            x_val = []
+            x_test = []
+        self.duration_mapper = MinMaxScaler()
+        subset = df_train[~df_train[self.inf_marker]]
+        self.duration_mapper.fit(subset[self.right_int].values.reshape(-1,1))
 
-        x_train = self.x_mapper.fit_transform(df_train[cont_cols+binary_cols]).astype('float32')
-        x_val = self.x_mapper.transform(df_val[cont_cols+binary_cols]).astype('float32')
-        x_test = self.x_mapper.transform(df_test[cont_cols+binary_cols]).astype('float32')
+        y_train_right = self.duration_mapper.transform(df_train[self.right_int].values.reshape(-1,1)).astype('float32')
+        y_train_left = self.duration_mapper.transform(df_train[self.left_int].values.reshape(-1,1)).astype('float32')
+        y_val_right = self.duration_mapper.transform(df_val[self.right_int].values.reshape(-1, 1)).astype(
+            'float32')
+        y_val_left = self.duration_mapper.transform(df_val[self.left_int].values.reshape(-1, 1)).astype(
+            'float32')
+        y_test_right = self.duration_mapper.transform(df_test[self.right_int].values.reshape(-1, 1)).astype(
+            'float32')
+        y_test_left = self.duration_mapper.transform(df_test[self.left_int].values.reshape(-1, 1)).astype(
+            'float32')
 
-        y_train = self.duration_mapper.fit_transform(df_train[self.duration_col].values.reshape(-1,1)).astype('float32')
-        y_val = self.duration_mapper.transform(df_val[self.duration_col].values.reshape(-1,1)).astype('float32')
-        y_test = self.duration_mapper.transform(df_test[self.duration_col].values.reshape(-1,1)).astype('float32')
 
-
-        self.split(X=x_train,delta=df_train[self.event_col],y=y_train,mode='train',cat=cat_cols,df=df_train)
-        self.split(X=x_val,delta=df_val[self.event_col],y=y_val,mode='val',cat=cat_cols,df=df_val)
-        self.split(X=x_test,delta=df_test[self.event_col],y=y_test,mode='test',cat=cat_cols,df=df_test)
+        self.split(X=x_train,inf_indicator=df_train[self.inf_marker],y_left=y_train_left,y_right=y_train_right,mode='train',cat=cat_cols,df=df_train)
+        self.split(X=x_val,inf_indicator=df_val[self.inf_marker],y_left=y_val_left,y_right=y_val_right,mode='val',cat=cat_cols,df=df_val)
+        self.split(X=x_test,inf_indicator=df_test[self.inf_marker],y_left=y_test_left,y_right=y_test_right,mode='test',cat=cat_cols,df=df_test)
         self.set('train')
 
-
-    def split(self,X,delta,y,cat=[],mode='train',df=[]):
-        min_dur,max_dur = y.min(),y.max()
-        times = np.linspace(min_dur,max_dur,100)
-        kmf = KaplanMeierFitter()
-        kmf.fit(y,1-delta)
-        s_kmf = kmf.predict(y.squeeze()).values
-        t_kmf = kmf.predict(times).values
-        setattr(self,f'{mode}_times', torch.from_numpy(times.astype('float32')).float().unsqueeze(-1))
-        setattr(self,f'{mode}_s_kmf', torch.from_numpy(s_kmf.astype('float32')).float().unsqueeze(-1))
-        setattr(self,f'{mode}_t_kmf', torch.from_numpy(t_kmf.astype('float32')).float().unsqueeze(-1))
-        setattr(self,f'{mode}_delta', torch.from_numpy(delta.astype('float32').values).float())
-        setattr(self,f'{mode}_y', torch.from_numpy(y).float())
-        setattr(self, f'{mode}_X', torch.from_numpy(X).float())
+    def split(self,X,inf_indicator,y_left,y_right,cat=[],mode='train',df=[]):
+        setattr(self,f'{mode}_inf_indicator', torch.from_numpy(inf_indicator.astype('bool').values).bool())
+        setattr(self,f'{mode}_y_left', torch.from_numpy(y_left).float())
+        setattr(self,f'{mode}_y_right', torch.from_numpy(y_right).float())
+        if self.regular_X:
+            setattr(self, f'{mode}_X', torch.from_numpy(X).float())
         if self.cat_cols:
             setattr(self, f'{mode}_cat_X', torch.from_numpy(df[cat].astype('int64').values).long())
 
     def set(self,mode='train'):
-        self.X = getattr(self,f'{mode}_X')
-        self.y = getattr(self,f'{mode}_y')
-        self.s_kmf = getattr(self,f'{mode}_s_kmf')
-        self.t_kmf = getattr(self,f'{mode}_t_kmf')
-        self.times = getattr(self,f'{mode}_times')
-        self.delta = getattr(self,f'{mode}_delta')
+        self.y_left = getattr(self,f'{mode}_y_left')
+        self.y_right = getattr(self,f'{mode}_y_right')
+        self.inf_indicator = getattr(self,f'{mode}_inf_indicator')
         if self.cat_cols:
             self.cat_X = getattr(self,f'{mode}_cat_X')
         else:
             self.cat_X = []
-        self.min_duration = self.y.min().numpy()
-        self.max_duration = self.y.max().numpy()
+        if self.regular_X:
+            self.X = getattr(self, f'{mode}_X')
+        else:
+            self.X = []
+        self.min_duration = self.y_left.min().numpy()
+        self.max_duration = self.y_right[~self.inf_indicator].max().numpy()
 
     def transform_x(self,x):
         return self.x_mapper.transform(x)
@@ -168,52 +187,70 @@ class surival_dataset(Dataset):
         return self.duration_mapper.transform(duration)
 
     def __getitem__(self, index):
+        #X,x_cat,y_left,y_right,inf_indicator
         if self.cat_cols:
-            return self.X[index,:],self.cat_X[index,:],self.y[index],self.delta[index]
+            if self.regular_X:
+                return self.X[index, :], self.cat_X[index, :], self.y_left[index], self.y_right[index], \
+                       self.inf_indicator[index]
+            else:
+                return [], self.cat_X[index, :], self.y_left[index], self.y_right[index], \
+                       self.inf_indicator[index]
         else:
-            return self.X[index,:],self.cat_X,self.y[index],self.delta[index]
+            return self.X[index,:],[],self.y_left[index],self.y_right[index],self.inf_indicator[index]
+
 
     def __len__(self):
         return self.X.shape[0]
 
 class chunk_iterator():
-    def __init__(self,X,delta,y,cat_X,shuffle,batch_size,s_kmf):
-        self.X = X
-        self.delta = delta
-        self.y = y
-        self.cat_X = cat_X
+    def __init__(self,dataset,shuffle,batch_size):
         self.shuffle = shuffle
         self.batch_size = batch_size
-        self.n = self.X.shape[0]
+        self.n = dataset.y_left.shape[0]
         self.chunks=self.n//batch_size+1
-        self.s_kmf = s_kmf
         self.perm = torch.randperm(self.n)
+        self.X  = dataset.X
+        self.cat_X  = dataset.cat_X
+        self.y_left  = dataset.y_left
+        self.y_right  = dataset.y_right
+        self.inf_indicator  = dataset.inf_indicator
         self.valid_cat = not isinstance(self.cat_X, list)
+        self.regular_X = not isinstance(self.X, list)
         if self.shuffle:
-            self.X = self.X[self.perm,:]
-            self.delta = self.delta[self.perm]
-            self.y = self.y[self.perm,:]
-            self.s_kmf = self.s_kmf[self.perm,:]
+            self.inf_indicator = self.inf_indicator[self.perm]
+            self.y_left = self.y_left[self.perm,:]
+            self.y_right = self.y_right[self.perm,:]
             if self.valid_cat: #F
                 self.cat_X = self.cat_X[self.perm,:]
+            if self.regular_X:
+                self.X = self.X[self.perm, :]
         self._index = 0
-        self.it_X = torch.chunk(self.X,self.chunks)
-        self.it_delta = torch.chunk(self.delta,self.chunks)
-        self.it_y = torch.chunk(self.y,self.chunks)
-        self.it_s_kmf = torch.chunk(self.s_kmf,self.chunks)
+        self.it_inf_indicator = torch.chunk(self.inf_indicator,self.chunks)
+        self.it_y_left = torch.chunk(self.y_left,self.chunks)
+        self.it_y_right = torch.chunk(self.y_right,self.chunks)
         if self.valid_cat:  # F
             self.it_cat_X = torch.chunk(self.cat_X,self.chunks)
         else:
             self.it_cat_X = []
-        self.true_chunks = len(self.it_X)
+
+        if self.regular_X:
+            self.it_X = torch.chunk(self.X, self.chunks)
+        else:
+            self.it_X = []
+        self.true_chunks = len(self.it_y_left)
 
     def __next__(self):
         ''''Returns the next value from team object's lists '''
         if self._index < self.true_chunks:
             if self.valid_cat:
-                result = (self.it_X[self._index],self.it_cat_X[self._index],self.it_y[self._index],self.it_delta[self._index], self.it_s_kmf[self._index])
+                if self.regular_X:
+                    result = (self.it_X[self._index], self.it_cat_X[self._index], self.it_y_left[self._index],
+                              self.it_y_right[self._index], self.it_inf_indicator[self._index])
+                else:
+                    result = ([], self.it_cat_X[self._index], self.it_y_left[self._index],
+                              self.it_y_right[self._index], self.it_inf_indicator[self._index])
             else:
-                result = (self.it_X[self._index],[],self.it_y[self._index],self.it_delta[self._index],self.it_s_kmf[self._index])
+                result = (self.it_X[self._index],[],self.it_y_left[self._index],self.it_y_right[self._index], self.it_inf_indicator[self._index])
             self._index += 1
             return result
         # End of Iteration
@@ -227,22 +264,16 @@ class custom_dataloader():
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
-        self.n = self.dataset.X.shape[0]
+        self.n = self.dataset.y_left.shape[0]
         self.len=self.n//batch_size+1
     def __iter__(self):
-        return chunk_iterator(X =self.dataset.X,
-                              delta = self.dataset.delta,
-                              y = self.dataset.y,
-                              cat_X = self.dataset.cat_X,
-                              shuffle = self.shuffle,
-                              batch_size=self.batch_size,
-                              s_kmf= self.dataset.s_kmf)
+        return chunk_iterator(dataset=self.dataset,shuffle=self.shuffle,batch_size=self.batch_size)
     def __len__(self):
-        self.n = self.dataset.X.shape[0]
+        self.n = self.dataset.y_left.shape[0]
         self.len = self.n // self.batch_size + 1
         return self.len
 
-def get_dataloader(str_identifier,bs,seed,fold_idx,shuffle=True):
-    d = surival_dataset(str_identifier,seed,fold_idx=fold_idx)
+def get_dataloader_interval(str_identifier,bs,seed,fold_idx,shuffle=True):
+    d = surival_dataset_interval(str_identifier, seed, fold_idx=fold_idx)
     dat = custom_dataloader(dataset=d,batch_size=bs,shuffle=shuffle)
     return dat
