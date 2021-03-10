@@ -326,10 +326,8 @@ class hyperopt_training_interval():
             reverse = False
 
         best_trial = sorted(trials.results, key=lambda x: x['test_loss'], reverse=reverse)[0] #low to high
-        data = [best_trial['test_loglikelihood'],
-                best_trial['val_loglikelihood']]
-        df = pd.DataFrame([data],columns=['test_loglikelihood',
-                                          'val_loglikelihood'])
+        data = [best_trial['test_loglikelihood']]
+        df = pd.DataFrame([data],columns=['test_loglikelihood'])
         print(df)
         df.to_csv(self.save_path+'best_results.csv',index_label=False)
 

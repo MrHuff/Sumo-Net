@@ -201,14 +201,14 @@ class survival_net_basic_interval(torch.nn.Module):
         x_cov = self.covariate_net((x_cov,x_cat))
         h_left = self.middle_net((x_cov,y_left))
         h_right = self.middle_net((x_cov[~inf_indicator],y_right[~inf_indicator]))
-        S_U =1.-h_left.sigmoid()
-        S_U_finite = S_U[~inf_indicator]
-        S_U_inf = S_U[inf_indicator]
-        S_V_finite = 1.-h_right.sigmoid()
-        S_V_inf = torch.zeros_like(S_U_inf)
-        S_U = torch.cat([S_U_finite,S_U_inf],dim=0)
-        S_V = torch.cat([S_V_finite,S_V_inf],dim=0)
-        return S_U,S_V
+        S_left =1.-h_left.sigmoid()
+        S_left_finite = S_left[~inf_indicator]
+        S_left_inf = S_left[inf_indicator]
+        S_right_finite = 1.-h_right.sigmoid()
+        S_right_inf = torch.zeros_like(S_left_inf)
+        S_left = torch.cat([S_left_finite,S_left_inf],dim=0)
+        S_right = torch.cat([S_right_finite,S_right_inf],dim=0)
+        return S_left,S_right
 
     def forward_f(self,x_cov,y,x_cat=[]): #Figure out how to zero out grad
         y = torch.autograd.Variable(y,requires_grad=True)
@@ -249,10 +249,10 @@ def get_objective(objective):
         return log_objective_mean
 
 def log_objective(S_left,S_right):
-    return -torch.log(S_left-S_right).sum()
+    return -torch.log(torch.clip(S_left-S_right,1e-6)).sum()
 
 def log_objective_mean(S_left,S_right):
-    return -torch.log(S_left-S_right).mean()
+    return -torch.log(torch.clip(S_left-S_right,1e-6)).mean()
 
 
 

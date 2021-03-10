@@ -13,6 +13,17 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from lifelines import KaplanMeierFitter
 import pycox.utils as utils
 
+class toy_dataset():
+    def __init__(self,name):
+        self.load_path = f'./{name}/{name}.csv'
+        self.left_int = 'l'
+        self.right_int = 'r'
+
+    def read_df(self):
+        df = pd.read_csv(self.load_path,index_col=0)
+        return df
+
+
 class tooth_dataset():
     def __init__(self):
         self.load_path = f'tooth.csv'
@@ -90,10 +101,15 @@ class surival_dataset_interval(Dataset):
             binary_cols = []
             cat_cols = ['sex', 'dmf']
 
+        elif str_identifier in ['interval_checkboard','interval_weibull','interval_normal']:
+            data = toy_dataset(str_identifier)
+            cont_cols = ['X']
+            binary_cols = []
+            cat_cols = []
+
         df_full = data.read_df()
         df_full = df_full.dropna()
-        df_full =df_full.replace([np.inf, -np.inf], np.nan)
-
+        df_full =df_full.replace([np.inf,-np.inf], np.nan)
         self.left_int = data.left_int
         self.right_int = data.right_int
         self.inf_marker = 'is_inf_bool'
@@ -154,12 +170,19 @@ class surival_dataset_interval(Dataset):
         self.set('train')
 
     def split(self,X,inf_indicator,y_left,y_right,cat=[],mode='train',df=[]):
+        remove_left_mask = np.isnan(y_left).squeeze()
+        y_left = y_left[~remove_left_mask]
+        inf_indicator = inf_indicator[~remove_left_mask]
+        y_right = y_right[~remove_left_mask]
+
         setattr(self,f'{mode}_inf_indicator', torch.from_numpy(inf_indicator.astype('bool').values).bool())
         setattr(self,f'{mode}_y_left', torch.from_numpy(y_left).float())
         setattr(self,f'{mode}_y_right', torch.from_numpy(y_right).float())
         if self.regular_X:
+            X = X[~remove_left_mask]
             setattr(self, f'{mode}_X', torch.from_numpy(X).float())
         if self.cat_cols:
+            cat=cat[~remove_left_mask]
             setattr(self, f'{mode}_cat_X', torch.from_numpy(df[cat].astype('int64').values).long())
 
     def set(self,mode='train'):

@@ -1,6 +1,7 @@
 import numpy as np
 import pickle
 from nets.nets import *
+from nets.nets_interval import *
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
 
@@ -27,6 +28,14 @@ def load_best_model(PATH):
     best_tid = best['misc']['tid']
     best_params = best['result']['net_init_params']
     model = survival_net(**best_params)
+    model.load_state_dict(torch.load(PATH+f'best_model_{best_tid}.pt'))
+    return model
+def load_best_model_interval(PATH):
+    trials = pickle.load(open(PATH+'hyperopt_database.p', "rb"))
+    best = sorted(trials.trials, key=lambda x: x['result']['test_loglikelihood'], reverse=False)[0]
+    best_tid = best['misc']['tid']
+    best_params = best['result']['net_init_params']
+    model = survival_net_basic_interval(**best_params)
     model.load_state_dict(torch.load(PATH+f'best_model_{best_tid}.pt'))
     return model
 

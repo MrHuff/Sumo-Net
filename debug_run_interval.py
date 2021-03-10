@@ -7,7 +7,8 @@ import warnings
 warnings.simplefilter("ignore")
 datasets = [
             'essIncData'
-            ]
+
+            ] +['interval_checkboard','interval_weibull','interval_normal']
 #Uppgrade dataloader rip, probably uses some retarded permutation which is really slow.
 #Write serious job script, figure out post processing pipeline...
 if __name__ == '__main__':
@@ -18,7 +19,7 @@ if __name__ == '__main__':
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.Tanh()],
-        'depth_x': [2],
+        'depth_x': [1],
         'width_x': [32], #adapt for smaller time net
         'depth_t': [3],
         'width_t': [1], #ads
@@ -34,7 +35,7 @@ if __name__ == '__main__':
         'T_losses':[90]
 
     }
-    for i in [0]:
+    for i in [-1]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -54,7 +55,7 @@ if __name__ == '__main__':
             'net_type':'survival_net_basic',
             'objective': 'S_mean',
             'fold_idx':0 ,
-            'savedir':'test',
+            'savedir':f'{datasets[i]}_test',
             'reg_mode':'conc',
             'ibs_est_deltas':100,
             'use_sotle':False
