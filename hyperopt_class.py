@@ -9,7 +9,7 @@ from pycox.evaluation import EvalSurv
 import pandas as pd
 import shutil
 from torch.utils.tensorboard import SummaryWriter
-from RAdam.radam import RAdam
+from radam import RAdam
 from tqdm import tqdm
 from pycox.models import CoxCC,CoxPH,CoxTime
 from pycox.models.cox_time import MLPVanillaCoxTime
