@@ -134,7 +134,7 @@ class hyperopt_training_interval():
         #                             dropout=net_init_params['dropout'],
         #                             activation=torch.nn.Tanh) #Actual net to be used
 
-        self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
+        self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
         self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=self.patience//4,min_lr=1e-3,factor=0.9)
         results = self.full_loop()
         del self.optimizer
