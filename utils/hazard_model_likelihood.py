@@ -69,45 +69,68 @@ class HazardLikelihoodCoxTime():
         cum_hazard = torch.cat(c_haz_list,dim=0)
         return cum_hazard
 
+    def estimate_likelihood(self,X,y_dat):
+        T,event = y_dat
+        assert T.dim==2
+        haz = self.calculate_hazard(X,T,event)
+        cum_haz = self.calculate_cumulative_hazard(X,T)
+        L = self.calc_likelihood(hazard=haz,cum_hazard=cum_haz)
+        return L
+
     def calc_likelihood(self,hazard,cum_hazard):
-        n = cum_hazard.shape[0]
-        return -((hazard + 1e-6).log().sum() - cum_hazard.sum()) / n
+        n =cum_hazard.shape[0]
+        return -((hazard + 1e-6).log().sum() - cum_hazard.sum())/n
 
 class general_likelihood():
     def __init__(self,pycox_model):
         self.model = pycox_model
 
-    def get_S_and_f(self,X,T,event):
+    def get_S_and_f(self, X, T, event):
         event = event.bool()
-        surv = self.model.predict_surv_df(X)
-        times = torch.from_numpy(surv.index.values).float()
-        S = torch.from_numpy(surv.values).t().float()
-        min_time = times.min().item()
+        chks = X.shape[0]//5000 + 1
+        S_cat = []
+        f_cat = []
+        for x,t in zip(torch.chunk(X,chks,dim=0),torch.chunk(T,chks,dim=0)):
+            surv_df = self.model.predict_surv_df(x)
+            times = torch.from_numpy(surv_df.index.values).float()
+            surv_tensor = torch.from_numpy(surv_df.values).t().float()
+            min_time = times.min().item()
+            min_bool = (t < min_time).squeeze()
+            max_time = times.max().item()
+            max_bool = (t > max_time).squeeze()
+            bool_mask = t <= times
+            idx = torch.arange(bool_mask.shape[1], 0, -1)
+            tmp2 = bool_mask * idx
+            indices = torch.argmax(tmp2, 1, keepdim=True)
+            base_ind = indices-1
+            S_t_1 = torch.gather(surv_tensor,dim=1,index=indices)
+            S_t_0 = torch.gather(surv_tensor,dim=1,index=base_ind)
+            delta  = times[indices]-times[base_ind]
+            t_prime = t - times[base_ind]
+            S = (1-t_prime/delta)*S_t_0+t_prime/delta*S_t_1
+            f = -(S_t_1-S_t_0)/delta
+            f[min_bool]=0.0
+            f[max_bool]=0.0
+            S[min_bool]= surv_tensor[min_bool,0].unsqueeze(-1)
+            S[max_bool]= surv_tensor[max_bool,-1].unsqueeze(-1)
+            S_cat.append(S)
+            f_cat.append(f)
+        S_cat = torch.cat(S_cat,dim=0)
+        f_cat = torch.cat(f_cat,dim=0)
+        assert S_cat.shape[0]==event.shape[0]
+        assert f_cat.shape[0]==event.shape[0]
+        return S_cat[~event],f_cat[event]
 
-        min_bool = (T<min_time).squeeze()
-        max_time = times.max().item()
-        max_bool = (T>max_time).squeeze()
-
-        bool_mask = T<=times
-        idx = torch.arange(bool_mask.shape[1], 0, -1)
-        tmp2 = bool_mask * idx
-        indices = torch.argmax(tmp2, 1, keepdim=True)
-        base_ind = indices-1
-        S_t_1 = torch.gather(S,dim=1,index=indices)
-        S_t_0 = torch.gather(S,dim=1,index=base_ind)
-        delta  = times[indices]-times[base_ind]
-        t_prime = T-times[base_ind]
-        surv = (1-t_prime/delta)*S_t_0+t_prime/delta*S_t_1
-        f = -(S_t_1-S_t_0)/delta
-        f[min_bool]=0.0
-        f[max_bool]=0.0
-        surv[min_bool]= S[min_bool,0].unsqueeze(-1)
-        surv[max_bool]= S[max_bool,-1].unsqueeze(-1)
-        return surv[~event],f[event]
+    def estimate_likelihood(self,X,y_dat):
+        T,event = y_dat
+        assert T.dim==2
+        S,f = self.get_S_and_f(X,T,event)
+        L = self.calc_likelihood(S,f)
+        return L
 
     def calc_likelihood(self,S, f):
-        n = S.shape[0] + f.shape[0]
-        return -((f + 1e-6).log().sum() + S.sum()) / n
+        n = S.shape[0]+f.shape[0]
+        return -((f + 1e-6).log().sum() + S.sum())/n
 
 if __name__ == '__main__':
     import numpy as np
@@ -173,18 +196,10 @@ if __name__ == '__main__':
     t,s = torch.from_numpy(base_haz.index.values),torch.from_numpy(base_haz.values)
     reference_t = torch.tensor([[-100.0],[1.5],[200.0]])
     survL = general_likelihood(model)
-    print(x_val.shape)
-    S,f = survL.get_S_and_f(X=x_val,T=torch.from_numpy(y_val[0]).unsqueeze(-1),event=torch.from_numpy(y_val[1]).unsqueeze(-1))
-    print(f.shape)
-    print(S.shape)
-    L_S = survL.calc_likelihood(S,f)
+    L_S = survL.estimate_likelihood(torch.from_numpy(x_val),(torch.from_numpy(y_val[0]).unsqueeze(-1),torch.from_numpy(y_val[1])))
     print(L_S)
     coxL = HazardLikelihoodCoxTime(model)
-    haz =  coxL.calculate_hazard(torch.from_numpy(x_val),torch.from_numpy(y_val[0]).unsqueeze(-1),event=torch.from_numpy(y_val[1]).unsqueeze(-1))
-    cum_haz = coxL.calculate_cumulative_hazard(torch.from_numpy(x_val),torch.from_numpy(y_val[0]).unsqueeze(-1))
-    print(haz.shape)
-    print(cum_haz.shape)
-    L = coxL.calc_likelihood(hazard=haz,cum_hazard=cum_haz)
+    L = coxL.estimate_likelihood(torch.from_numpy(x_val),(torch.from_numpy(y_val[0]).unsqueeze(-1),torch.from_numpy(y_val[1])))
     print(L)
     # surv_base = np.exp(-model.compute_baseline_cumulative_hazards())
     # surv_base.plot()

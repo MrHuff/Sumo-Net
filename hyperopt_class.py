@@ -11,10 +11,12 @@ import shutil
 from torch.utils.tensorboard import SummaryWriter
 from radam import RAdam
 from tqdm import tqdm
-from pycox.models import CoxCC,CoxPH,CoxTime
+from pycox.models import CoxCC,CoxPH,CoxTime,DeepHitSingle
 from pycox.models.cox_time import MLPVanillaCoxTime
 import torchtuples as tt
 import time
+from utils.hazard_model_likelihood import HazardLikelihoodCoxTime,general_likelihood
+
 def square(x):
     return x**2
 
@@ -150,18 +152,44 @@ class hyperopt_training():
             self.model = survival_net_nocov(**net_init_params).to(self.device)
         elif self.net_type=='ocean_net':
             self.model = ocean_net(**net_init_params).to(self.device)
-        elif self.net_type=='cox_net':
-            self.model = cox_net(**net_init_params).to(self.device)
-        elif self.net_type=='benchmark':
+        elif self.net_type=='cox_time_benchmark':
             self.model = MLPVanillaCoxTime(in_features=net_init_params['d_in_x'],
                                     num_nodes=net_init_params['layers'],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
                                     activation=torch.nn.Tanh) #Actual net to be used
-
-
-        if self.net_type =='benchmark':
             self.wrapper = CoxTime(self.model,RAdam)
+
+        elif self.net_type=='deepsurv_benchmark':
+            self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                    num_nodes=net_init_params['layers'],
+                                    batch_norm=False,
+                                    dropout=net_init_params['dropout'],
+                                    activation=torch.nn.Tanh,out_features=1) #Actual net to be used
+            self.wrapper = CoxPH(self.model,RAdam)
+        elif self.net_type=='deephit_benchmark':
+            self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                    num_nodes=net_init_params['layers'],
+                                    batch_norm=False,
+                                    dropout=net_init_params['dropout'],
+                                    activation=torch.nn.Tanh,out_features=1) #Actual net to be used
+            self.wrapper = DeepHitSingle(self.model,RAdam)
+        elif self.net_type=='cox_CC_benchmark':
+            self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                    num_nodes=net_init_params['layers'],
+                                    batch_norm=False,
+                                    dropout=net_init_params['dropout'],
+                                    activation=torch.nn.Tanh,out_features=1) #Actual net to be used
+            self.wrapper = CoxCC(self.model,RAdam)
+        elif self.net_type=='cox_linear_benchmark':
+            self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                    num_nodes=[],
+                                    batch_norm=False,
+                                    dropout=net_init_params['dropout'],
+                                    activation=torch.nn.Tanh,out_features=1) #Actual net to be used
+            self.wrapper = CoxPH(self.model,RAdam)
+
+        if self.net_type in ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark']:
             self.wrapper.optimizer.set_lr(parameters_in['lr'])
             callbacks = [tt.callbacks.EarlyStopping()]
             verbose = True
@@ -175,6 +203,8 @@ class hyperopt_training():
                             val_data=val_data)
             base_haz = self.wrapper.compute_baseline_hazards()
 
+            #Rewrite this parts more or less!
+
             val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()
             val_conc, val_ibs, val_inll =self.benchmark_eval(y=val_durations,events=self.dataloader.dataset.val_delta.float().squeeze().numpy(),
                                                              wrapper=self.wrapper,X=self.dataloader.dataset.val_X.numpy())
@@ -182,10 +212,22 @@ class hyperopt_training():
             test_conc, test_ibs, test_inll =self.benchmark_eval(y=test_durations,events=self.dataloader.dataset.test_delta.float().squeeze().numpy(),
                                                                 wrapper=self.wrapper,X=self.dataloader.dataset.test_X.numpy())
             with torch.no_grad():
-                val_partial_likelihood= self.wrapper.partial_log_likelihood(*val_data).mean()
-                test_partial_likelihood=self.wrapper.partial_log_likelihood(*test_data).mean()
-            results = self.parse_results(val_partial_likelihood, val_conc, val_ibs, val_inll,
-                                      test_partial_likelihood, test_conc, test_ibs, test_inll)
+                coxL = HazardLikelihoodCoxTime(self.model)
+                val_likelihood = coxL.estimate_likelihood(*val_data)
+                test_likelihood = coxL.estimate_likelihood(*test_data)
+
+            results = self.parse_results(
+                                        val_likelihood.item(),
+                                         val_conc,
+                                         val_ibs,
+                                         val_inll,
+                                        test_likelihood.item(),
+                                         test_conc,
+                                         test_ibs,
+                                         test_inll)
+
+        elif self.net_type in ['deephit_benchmark']:
+            pass
 
         else:
             self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
@@ -365,9 +407,6 @@ class hyperopt_training():
         S_j = self.model.forward_S_eval(X_rep,y_rep,x_cat_rep)
         return torch.sum(torch.ceil(torch.relu(S_j-S_i)))/divisor
 
-
-
-
     def training_loop(self,epoch):
         self.dataloader.dataset.set(mode='train')
         total_loss_train=0.
@@ -389,25 +428,12 @@ class hyperopt_training():
                 x_cat_f = []
             S = self.model.forward_cum(X,y,mask,x_cat)
             f = self.model(X_f,y_f,x_cat_f)
-            reg_loss = 0.0
-            if self.reg_mode in ['ibs','ibll']:
-                reg_loss = self.calculate_reg_loss(X=X,x_cat=x_cat,y=y,delta=delta,gst=s_kmf)
-            elif self.reg_mode == 'conc':
-                reg_loss = self.calculate_conc_reg_loss(X=X,x_cat=x_cat,y=y,delta=delta)
-            if self.reg_mode in ['ibll','conc']:
-                reg_loss = -1*reg_loss
-            loss =self.train_objective(S,f)
-            # total_loss =reg_loss #loss + self.reg_lambda*reg_loss
-            total_loss =loss + self.reg_lambda*reg_loss
+            total_loss =self.train_objective(S,f)
             self.optimizer.zero_grad()
             total_loss.backward()
             self.optimizer.step()
             total_loss_train+=total_loss.detach()
-            tot_likelihood+=loss.detach()
-            if self.reg_mode in ['ibs','ibll','conc']:
-                tot_reg_loss+=reg_loss.detach()
-            else:
-                tot_reg_loss+=0.0
+            tot_likelihood+=total_loss.detach()
             if not self.use_sotle:
                 if self.eval_func(i,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
                     return True
