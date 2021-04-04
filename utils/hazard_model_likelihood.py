@@ -69,9 +69,10 @@ class HazardLikelihoodCoxTime():
         cum_hazard = torch.cat(c_haz_list,dim=0)
         return cum_hazard
 
-    def estimate_likelihood(self,X,y_dat):
-        T,event = y_dat
-        assert T.dim==2
+    def estimate_likelihood(self,X,T,event):
+        if T.dim()!=2:
+            T = T.unsqueeze(-1)
+        assert T.dim()==2
         haz = self.calculate_hazard(X,T,event)
         cum_haz = self.calculate_cumulative_hazard(X,T)
         L = self.calc_likelihood(hazard=haz,cum_hazard=cum_haz)
@@ -102,7 +103,7 @@ class general_likelihood():
             idx = torch.arange(bool_mask.shape[1], 0, -1)
             tmp2 = bool_mask * idx
             indices = torch.argmax(tmp2, 1, keepdim=True)
-            base_ind = indices-1
+            base_ind = torch.relu(indices-1)
             S_t_1 = torch.gather(surv_tensor,dim=1,index=indices)
             S_t_0 = torch.gather(surv_tensor,dim=1,index=base_ind)
             delta  = times[indices]-times[base_ind]
@@ -121,9 +122,10 @@ class general_likelihood():
         assert f_cat.shape[0]==event.shape[0]
         return S_cat[~event],f_cat[event]
 
-    def estimate_likelihood(self,X,y_dat):
-        T,event = y_dat
-        assert T.dim==2
+    def estimate_likelihood(self,X,T,event):
+        if T.dim()!=2:
+            T = T.unsqueeze(-1)
+        assert T.dim()==2
         S,f = self.get_S_and_f(X,T,event)
         L = self.calc_likelihood(S,f)
         return L
@@ -132,75 +134,75 @@ class general_likelihood():
         n = S.shape[0]+f.shape[0]
         return -((f + 1e-6).log().sum() + S.sum())/n
 
-if __name__ == '__main__':
-    import numpy as np
-    from sklearn.preprocessing import StandardScaler
-    from sklearn_pandas import DataFrameMapper
-    import torch
-    import torchtuples as tt
-
-    from pycox.datasets import metabric
-    from pycox.models import CoxCC, CoxPH, CoxTime
-    from pycox.evaluation import EvalSurv
-    from pycox.models.cox_time import MLPVanillaCoxTime
-
-    np.random.seed(1234)
-    _ = torch.manual_seed(123)
-
-    df_train = metabric.read_df()
-    df_test = df_train.sample(frac=0.2)
-    df_train = df_train.drop(df_test.index)
-    df_val = df_train.sample(frac=0.25)
-    df_train = df_train.drop(df_val.index)
-
-    cols_standardize = ['x0', 'x1', 'x2', 'x3', 'x8']
-    cols_leave = ['x4', 'x5', 'x6', 'x7']
-
-    standardize = [([col], StandardScaler()) for col in cols_standardize]
-    leave = [(col, None) for col in cols_leave]
-
-    x_mapper = DataFrameMapper(standardize + leave)
-
-    x_train = x_mapper.fit_transform(df_train).astype('float32')
-    x_val = x_mapper.transform(df_val).astype('float32')
-    x_test = x_mapper.transform(df_test).astype('float32')
-
-    labtrans = CoxTime.label_transform()
-    get_target = lambda df: (df['duration'].values, df['event'].values)
-    y_train = labtrans.fit_transform(*get_target(df_train))
-    y_val = labtrans.transform(*get_target(df_val))
-    durations_test, events_test = get_target(df_test)
-    val = tt.tuplefy(x_val, y_val)
-
-    in_features = x_train.shape[1]
-    num_nodes = [32, 32]
-    out_features = 1
-    batch_norm = True
-    dropout = 0.1
-    output_bias = False
-
-    # net = tt.practical.MLPVanilla(in_features, num_nodes, out_features, batch_norm,
-    #                               dropout, output_bias=output_bias)
-    net = MLPVanillaCoxTime(in_features, num_nodes, batch_norm, dropout)  # Actual net to be used
-    model = CoxTime(net, tt.optim.Adam)  # the cox time framework, dont do this..
-    model.optimizer.set_lr(0.01)
-    epochs = 512
-    callbacks = [tt.callbacks.EarlyStopping()]
-    verbose = True
-    batch_size = 256
-    print(x_train.shape)
-    log = model.fit(x_train, y_train, batch_size, epochs, callbacks, verbose,
-                    val_data=val.repeat(10).cat())
-    base_haz = model.compute_baseline_hazards()
-    cum_base_haz = model.compute_baseline_cumulative_hazards()
-    t,s = torch.from_numpy(base_haz.index.values),torch.from_numpy(base_haz.values)
-    reference_t = torch.tensor([[-100.0],[1.5],[200.0]])
-    survL = general_likelihood(model)
-    L_S = survL.estimate_likelihood(torch.from_numpy(x_val),(torch.from_numpy(y_val[0]).unsqueeze(-1),torch.from_numpy(y_val[1])))
-    print(L_S)
-    coxL = HazardLikelihoodCoxTime(model)
-    L = coxL.estimate_likelihood(torch.from_numpy(x_val),(torch.from_numpy(y_val[0]).unsqueeze(-1),torch.from_numpy(y_val[1])))
-    print(L)
+# if __name__ == '__main__':
+#     import numpy as np
+#     from sklearn.preprocessing import StandardScaler
+#     from sklearn_pandas import DataFrameMapper
+#     import torch
+#     import torchtuples as tt
+#
+#     from pycox.datasets import metabric
+#     from pycox.models import CoxCC, CoxPH, CoxTime
+#     from pycox.evaluation import EvalSurv
+#     from pycox.models.cox_time import MLPVanillaCoxTime
+#
+#     np.random.seed(1234)
+#     _ = torch.manual_seed(123)
+#
+#     df_train = metabric.read_df()
+#     df_test = df_train.sample(frac=0.2)
+#     df_train = df_train.drop(df_test.index)
+#     df_val = df_train.sample(frac=0.25)
+#     df_train = df_train.drop(df_val.index)
+#
+#     cols_standardize = ['x0', 'x1', 'x2', 'x3', 'x8']
+#     cols_leave = ['x4', 'x5', 'x6', 'x7']
+#
+#     standardize = [([col], StandardScaler()) for col in cols_standardize]
+#     leave = [(col, None) for col in cols_leave]
+#
+#     x_mapper = DataFrameMapper(standardize + leave)
+#
+#     x_train = x_mapper.fit_transform(df_train).astype('float32')
+#     x_val = x_mapper.transform(df_val).astype('float32')
+#     x_test = x_mapper.transform(df_test).astype('float32')
+#
+#     labtrans = CoxTime.label_transform()
+#     get_target = lambda df: (df['duration'].values, df['event'].values)
+#     y_train = labtrans.fit_transform(*get_target(df_train))
+#     y_val = labtrans.transform(*get_target(df_val))
+#     durations_test, events_test = get_target(df_test)
+#     val = tt.tuplefy(x_val, y_val)
+#
+#     in_features = x_train.shape[1]
+#     num_nodes = [32, 32]
+#     out_features = 1
+#     batch_norm = True
+#     dropout = 0.1
+#     output_bias = False
+#
+#     # net = tt.practical.MLPVanilla(in_features, num_nodes, out_features, batch_norm,
+#     #                               dropout, output_bias=output_bias)
+#     net = MLPVanillaCoxTime(in_features, num_nodes, batch_norm, dropout)  # Actual net to be used
+#     model = CoxTime(net, tt.optim.Adam)  # the cox time framework, dont do this..
+#     model.optimizer.set_lr(0.01)
+#     epochs = 512
+#     callbacks = [tt.callbacks.EarlyStopping()]
+#     verbose = True
+#     batch_size = 256
+#     print(x_train.shape)
+#     log = model.fit(x_train, y_train, batch_size, epochs, callbacks, verbose,
+#                     val_data=val.repeat(10).cat())
+#     base_haz = model.compute_baseline_hazards()
+#     cum_base_haz = model.compute_baseline_cumulative_hazards()
+#     t,s = torch.from_numpy(base_haz.index.values),torch.from_numpy(base_haz.values)
+#     reference_t = torch.tensor([[-100.0],[1.5],[200.0]])
+#     survL = general_likelihood(model)
+#     L_S = survL.estimate_likelihood(torch.from_numpy(x_val),(torch.from_numpy(y_val[0]).unsqueeze(-1),torch.from_numpy(y_val[1])))
+#     print(L_S)
+#     coxL = HazardLikelihoodCoxTime(model)
+#     L = coxL.estimate_likelihood(torch.from_numpy(x_val),(torch.from_numpy(y_val[0]).unsqueeze(-1),torch.from_numpy(y_val[1])))
+#     print(L)
     # surv_base = np.exp(-model.compute_baseline_cumulative_hazards())
     # surv_base.plot()
     # plt.savefig('test.png')

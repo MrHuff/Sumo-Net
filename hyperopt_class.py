@@ -79,6 +79,7 @@ class hyperopt_training():
         self.reg_mode = job_param['reg_mode']
         self.ibs_est_deltas = job_param['ibs_est_deltas']
         self.use_sotle = job_param['use_sotle']
+        self.hazard_post_process = job_param['hazard_post_process']
         self.global_hyperit = 0
         self.debug = False
         torch.cuda.set_device(self.device)
@@ -167,13 +168,13 @@ class hyperopt_training():
                                     dropout=net_init_params['dropout'],
                                     activation=torch.nn.Tanh,out_features=1) #Actual net to be used
             self.wrapper = CoxPH(self.model,RAdam)
-        elif self.net_type=='deephit_benchmark':
-            self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
-                                    num_nodes=net_init_params['layers'],
-                                    batch_norm=False,
-                                    dropout=net_init_params['dropout'],
-                                    activation=torch.nn.Tanh,out_features=1) #Actual net to be used
-            self.wrapper = DeepHitSingle(self.model,RAdam)
+        # elif self.net_type=='deephit_benchmark':
+        #     self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+        #                             num_nodes=net_init_params['layers'],
+        #                             batch_norm=False,
+        #                             dropout=net_init_params['dropout'],
+        #                             activation=torch.nn.Tanh,out_features=1) #Actual net to be used
+        #     self.wrapper = DeepHitSingle(self.model,RAdam)
         elif self.net_type=='cox_CC_benchmark':
             self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                     num_nodes=net_init_params['layers'],
@@ -202,7 +203,7 @@ class hyperopt_training():
                               target=y_train, epochs=self.total_epochs,callbacks= callbacks, verbose=verbose,
                             val_data=val_data)
             base_haz = self.wrapper.compute_baseline_hazards()
-
+            #Write own class for DeepHit
             #Rewrite this parts more or less!
 
             val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()
@@ -212,9 +213,16 @@ class hyperopt_training():
             test_conc, test_ibs, test_inll =self.benchmark_eval(y=test_durations,events=self.dataloader.dataset.test_delta.float().squeeze().numpy(),
                                                                 wrapper=self.wrapper,X=self.dataloader.dataset.test_X.numpy())
             with torch.no_grad():
-                coxL = HazardLikelihoodCoxTime(self.model)
-                val_likelihood = coxL.estimate_likelihood(*val_data)
-                test_likelihood = coxL.estimate_likelihood(*test_data)
+                if self.hazard_post_process:
+                    coxL = HazardLikelihoodCoxTime(self.wrapper)
+                else:
+                    coxL = general_likelihood(self.wrapper)
+                val_likelihood = coxL.estimate_likelihood(torch.from_numpy(val_data[0]),
+                                                          torch.from_numpy(val_data[1][0]),
+                                                          torch.from_numpy(val_data[1][1]))
+                test_likelihood = coxL.estimate_likelihood(torch.from_numpy(test_data[0]),
+                                                          torch.from_numpy(test_data[1][0]),
+                                                          torch.from_numpy(test_data[1][1]))
 
             results = self.parse_results(
                                         val_likelihood.item(),
@@ -225,9 +233,6 @@ class hyperopt_training():
                                          test_conc,
                                          test_ibs,
                                          test_inll)
-
-        elif self.net_type in ['deephit_benchmark']:
-            pass
 
         else:
             self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])

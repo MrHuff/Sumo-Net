@@ -53,17 +53,19 @@ if __name__ == '__main__':
             'device': device,
             'patience': 100,
             'hyperits': 1,
-            'selection_criteria':'ibs',
+            'selection_criteria':'train',
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':2,
-            'net_type':'survival_net',
-            'objective': 'S_mean',
+            'net_type':'survival_net_basic',
+            # 'net_type':'cox_time_benchmark',
+            'objective': 'hazard_mean',
             'fold_idx':0 ,
             'savedir':'test',
             'reg_mode':'conc',
             'ibs_est_deltas':100,
-            'use_sotle':False
+            'use_sotle':False,
+            'hazard_post_process':False
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         training_obj.debug=True
