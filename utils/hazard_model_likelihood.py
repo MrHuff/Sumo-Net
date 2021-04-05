@@ -92,7 +92,11 @@ class general_likelihood():
         S_cat = []
         f_cat = []
         for x,t in zip(torch.chunk(X,chks,dim=0),torch.chunk(T,chks,dim=0)):
-            surv_df = self.model.predict_surv_df(x)
+            if self.model.__class__.__name__=='DeepHitSingle':
+                surv_df = self.model.interpolate(50).predict_surv_df(x)
+            else:
+                surv_df = self.model.predict_surv_df(x)
+            surv_df=surv_df.drop_duplicates(keep='first')
             times = torch.from_numpy(surv_df.index.values).float()
             surv_tensor = torch.from_numpy(surv_df.values).t().float()
             min_time = times.min().item()
@@ -132,7 +136,7 @@ class general_likelihood():
 
     def calc_likelihood(self,S, f):
         n = S.shape[0]+f.shape[0]
-        return -((f + 1e-6).log().sum() + S.sum())/n
+        return -((f + 1e-6).log().sum() + (S+1e-6).log().sum())/n
 
 # if __name__ == '__main__':
 #     import numpy as np

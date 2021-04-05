@@ -36,8 +36,10 @@ if __name__ == '__main__':
         'dropout': [0.0],
         'eps':[1e-4],
         'weight_decay':[0.],
-        'reg_lambda':[1.0],
-        'T_losses':[90]
+        'T_losses':[90],
+        'alpha': [0.2],
+        'sigma': [0.1],
+        'num_dur': [100],
 
     }
     for i in [1]:
@@ -57,13 +59,12 @@ if __name__ == '__main__':
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':2,
-            'net_type':'survival_net_basic',
-            # 'net_type':'cox_time_benchmark',
-            'objective': 'hazard_mean',
+            # 'net_type':'survival_net_basic',
+            # 'net_type':'deephit_benchmark',
+            'net_type':'cox_time_benchmark',
+            'objective': 'S_mean',
             'fold_idx':0 ,
             'savedir':'test',
-            'reg_mode':'conc',
-            'ibs_est_deltas':100,
             'use_sotle':False,
             'hazard_post_process':False
         }

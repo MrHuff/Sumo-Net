@@ -9,7 +9,6 @@ from pycox.evaluation import EvalSurv
 import pandas as pd
 import shutil
 from torch.utils.tensorboard import SummaryWriter
-from radam import RAdam
 from tqdm import tqdm
 from pycox.models import CoxCC,CoxPH,CoxTime,DeepHitSingle
 from pycox.models.cox_time import MLPVanillaCoxTime
@@ -76,8 +75,6 @@ class hyperopt_training():
         self.net_type = job_param['net_type']
         self.fold_idx = job_param['fold_idx']
         self.savedir = job_param['savedir']
-        self.reg_mode = job_param['reg_mode']
-        self.ibs_est_deltas = job_param['ibs_est_deltas']
         self.use_sotle = job_param['use_sotle']
         self.hazard_post_process = job_param['hazard_post_process']
         self.global_hyperit = 0
@@ -89,12 +86,9 @@ class hyperopt_training():
         else:
             shutil.rmtree(self.save_path)
             os.makedirs(self.save_path)
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','reg_lambda','T_losses']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','T_losses']
+        self.deephit_params= ['alpha','sigma','num_dur']
         self.get_hyperparameterspace(hyper_param_space)
-        if self.reg_mode=='ibs':
-            self.reg_func = ibs_calc
-        elif self.reg_mode=='ibll':
-            self.reg_func = ibll_calc
 
     def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
         val_likelihood = self.train_objective(S,f)
@@ -119,6 +113,10 @@ class hyperopt_training():
         for string in self.hyperopt_params:
             self.hyperparameter_space[string] = hp.choice(string, hyper_param_space[string])
 
+        if self.net_type == 'deephit_benchmark':
+            for string in self.deephit_params:
+                self.hyperparameter_space[string] = hp.choice(string, hyper_param_space[string])
+
     def __call__(self,parameters_in):
         print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
         print(parameters_in)
@@ -141,7 +139,6 @@ class hyperopt_training():
             'dropout':parameters_in['dropout'],
             'eps':parameters_in['eps']
         }
-        self.reg_lambda = parameters_in['reg_lambda']
         self.train_objective = get_objective(self.objective)
         if self.net_type=='survival_net':
             self.model = survival_net(**net_init_params).to(self.device)
@@ -159,7 +156,7 @@ class hyperopt_training():
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
                                     activation=torch.nn.Tanh) #Actual net to be used
-            self.wrapper = CoxTime(self.model,RAdam)
+            self.wrapper = CoxTime(self.model,tt.optim.Adam)
 
         elif self.net_type=='deepsurv_benchmark':
             self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
@@ -167,45 +164,57 @@ class hyperopt_training():
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
                                     activation=torch.nn.Tanh,out_features=1) #Actual net to be used
-            self.wrapper = CoxPH(self.model,RAdam)
-        # elif self.net_type=='deephit_benchmark':
-        #     self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
-        #                             num_nodes=net_init_params['layers'],
-        #                             batch_norm=False,
-        #                             dropout=net_init_params['dropout'],
-        #                             activation=torch.nn.Tanh,out_features=1) #Actual net to be used
-        #     self.wrapper = DeepHitSingle(self.model,RAdam)
+            self.wrapper = CoxPH(self.model,tt.optim.Adam)
+        elif self.net_type=='deephit_benchmark':
+            labtrans = DeepHitSingle.label_transform(parameters_in['num_dur'])
+
         elif self.net_type=='cox_CC_benchmark':
             self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                     num_nodes=net_init_params['layers'],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
                                     activation=torch.nn.Tanh,out_features=1) #Actual net to be used
-            self.wrapper = CoxCC(self.model,RAdam)
+            self.wrapper = CoxCC(self.model,tt.optim.Adam)
         elif self.net_type=='cox_linear_benchmark':
             self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                     num_nodes=[],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
                                     activation=torch.nn.Tanh,out_features=1) #Actual net to be used
-            self.wrapper = CoxPH(self.model,RAdam)
+            self.wrapper = CoxPH(self.model,tt.optim.Adam)
 
-        if self.net_type in ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark']:
-            self.wrapper.optimizer.set_lr(parameters_in['lr'])
-            callbacks = [tt.callbacks.EarlyStopping()]
-            verbose = True
+        if self.net_type in ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']:
             y_train = (self.dataloader.dataset.train_y.squeeze().numpy(),self.dataloader.dataset.train_delta.squeeze().numpy())
             y_val = (self.dataloader.dataset.val_y.squeeze().numpy(),self.dataloader.dataset.val_delta.squeeze().numpy())
             y_test = (self.dataloader.dataset.test_y.squeeze().numpy(),self.dataloader.dataset.test_delta.squeeze().numpy())
+            if self.net_type=='deephit_benchmark':
+                val_data_eval = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
+
+                y_train = labtrans.fit_transform(*y_train)
+                y_val = labtrans.transform(*y_val)
+                self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                                     num_nodes=net_init_params['layers'],
+                                                     batch_norm=False,
+                                                     dropout=net_init_params['dropout'],
+                                                     activation=torch.nn.Tanh, out_features=labtrans.out_features)  # Actual net to be used
+                self.wrapper = DeepHitSingle(self.model, tt.optim.Adam, alpha=parameters_in['alpha'],
+                                             sigma=parameters_in['sigma'],duration_index=labtrans.cuts)
+
+                # y_test = labtrans.transform(*y_test)
             val_data = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
             test_data = tt.tuplefy(self.dataloader.dataset.test_X.numpy(), y_test)
+
+            verbose = True
+            self.wrapper.optimizer.set_lr(parameters_in['lr'])
+            callbacks = [tt.callbacks.EarlyStopping()]
             log = self.wrapper.fit(input=self.dataloader.dataset.train_X.numpy(),
                               target=y_train, epochs=self.total_epochs,callbacks= callbacks, verbose=verbose,
                             val_data=val_data)
-            base_haz = self.wrapper.compute_baseline_hazards()
-            #Write own class for DeepHit
-            #Rewrite this parts more or less!
 
+            if self.net_type!='deephit_benchmark':
+                base_haz = self.wrapper.compute_baseline_hazards()
+            else:
+                val_data = val_data_eval
             val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()
             val_conc, val_ibs, val_inll =self.benchmark_eval(y=val_durations,events=self.dataloader.dataset.val_delta.float().squeeze().numpy(),
                                                              wrapper=self.wrapper,X=self.dataloader.dataset.val_X.numpy())
@@ -213,7 +222,7 @@ class hyperopt_training():
             test_conc, test_ibs, test_inll =self.benchmark_eval(y=test_durations,events=self.dataloader.dataset.test_delta.float().squeeze().numpy(),
                                                                 wrapper=self.wrapper,X=self.dataloader.dataset.test_X.numpy())
             with torch.no_grad():
-                if self.hazard_post_process:
+                if self.hazard_post_process and self.net_type!='deephit_benchmark':
                     coxL = HazardLikelihoodCoxTime(self.wrapper)
                 else:
                     coxL = general_likelihood(self.wrapper)
@@ -233,9 +242,8 @@ class hyperopt_training():
                                          test_conc,
                                          test_ibs,
                                          test_inll)
-
         else:
-            self.optimizer = RAdam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
+            self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=self.patience//4,min_lr=1e-3,factor=0.9)
             results = self.full_loop()
             del self.optimizer
@@ -323,10 +331,6 @@ class hyperopt_training():
             criteria = -conc  # maximize
         elif self.selection_criteria == 'ibs':
             criteria = ibs  # minimize
-        elif self.selection_criteria == 'ibs_likelihood':
-            criteria = self.reg_lambda*ibs+val_likelihood  # minimize
-        elif self.selection_criteria == 'inll':
-            criteria = ibll  # "minimize"
         elif self.selection_criteria == 'inll':
             criteria = ibll  # "minimize"
         print(f'total_loss: {training_loss} likelihood: {likelihood} reg_loss: {reg_loss}')
@@ -367,50 +371,50 @@ class hyperopt_training():
             if self.counter>self.patience:
                 return True
 
-    def calculate_reg_loss(self,X,x_cat,y,delta,gst):
-        add = 100//self.ibs_est_deltas
-        step_size = 1e-2*add
-        begin = np.random.randint(0,add)
-        indices = np.arange(begin,100,add)
-        gst = gst.to(self.device)
-        gt = self.dataloader.dataset.t_kmf[indices,:].t().to(self.device)
-        t = self.dataloader.dataset.times[indices,:].t().to(self.device)
-        mask_1 = (y<=t)*delta.unsqueeze(-1)
-        mask_2 = (y>t).float()
-        # mask_2 = (y>t)
-        grid_size = t.shape[1]
-        if not isinstance(x_cat, list):
-            x_cat_repeat = x_cat.repeat_interleave(grid_size, 0)
-        else:
-            x_cat_repeat = []
-        input_time = t.repeat((1,X.shape[0])).t()
-        X_repeat = X.repeat_interleave(grid_size, 0)
-        S = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)
-        S = S.view(-1, grid_size) #bs x gridsize
-        S = self.reg_func(S=S,mask_1=mask_1,mask_2=mask_2,gst=gst,gt=gt)
-        S = S.mean(dim=0)# mean across observations, time to integrate!
-        return simpsons_composite(S,step_size,100)
+    # def calculate_reg_loss(self,X,x_cat,y,delta,gst):
+    #     add = 100//self.ibs_est_deltas
+    #     step_size = 1e-2*add
+    #     begin = np.random.randint(0,add)
+    #     indices = np.arange(begin,100,add)
+    #     gst = gst.to(self.device)
+    #     gt = self.dataloader.dataset.t_kmf[indices,:].t().to(self.device)
+    #     t = self.dataloader.dataset.times[indices,:].t().to(self.device)
+    #     mask_1 = (y<=t)*delta.unsqueeze(-1)
+    #     mask_2 = (y>t).float()
+    #     # mask_2 = (y>t)
+    #     grid_size = t.shape[1]
+    #     if not isinstance(x_cat, list):
+    #         x_cat_repeat = x_cat.repeat_interleave(grid_size, 0)
+    #     else:
+    #         x_cat_repeat = []
+    #     input_time = t.repeat((1,X.shape[0])).t()
+    #     X_repeat = X.repeat_interleave(grid_size, 0)
+    #     S = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)
+    #     S = S.view(-1, grid_size) #bs x gridsize
+    #     S = self.reg_func(S=S,mask_1=mask_1,mask_2=mask_2,gst=gst,gt=gt)
+    #     S = S.mean(dim=0)# mean across observations, time to integrate!
+    #     return simpsons_composite(S,step_size,100)
 
-    def calculate_conc_reg_loss(self,X,x_cat,y,delta):
-        ev = delta==1
-        X_i = X[ev,:]
-        z_i = y[ev,:]
-        mask = (z_i<y.t())
-        rep_int = mask.sum(dim=1)
-        idx = mask.flatten()
-        divisor = torch.sum(idx)
-        n_rep = torch.sum(ev).item()
-        X_rep = X.repeat(n_rep,1)[idx,:]
-        y_rep = z_i.repeat_interleave(rep_int,0)
-        if not isinstance(x_cat, list):
-            x_cat_i = x_cat[ev,:]
-            x_cat_rep = x_cat.repeat(n_rep,1)[idx,:]
-        else:
-            x_cat_i = []
-            x_cat_rep = []
-        S_i = self.model.forward_S_eval(X_i,z_i,x_cat_i).repeat_interleave(rep_int,dim=0)
-        S_j = self.model.forward_S_eval(X_rep,y_rep,x_cat_rep)
-        return torch.sum(torch.ceil(torch.relu(S_j-S_i)))/divisor
+    # def calculate_conc_reg_loss(self,X,x_cat,y,delta):
+    #     ev = delta==1
+    #     X_i = X[ev,:]
+    #     z_i = y[ev,:]
+    #     mask = (z_i<y.t())
+    #     rep_int = mask.sum(dim=1)
+    #     idx = mask.flatten()
+    #     divisor = torch.sum(idx)
+    #     n_rep = torch.sum(ev).item()
+    #     X_rep = X.repeat(n_rep,1)[idx,:]
+    #     y_rep = z_i.repeat_interleave(rep_int,0)
+    #     if not isinstance(x_cat, list):
+    #         x_cat_i = x_cat[ev,:]
+    #         x_cat_rep = x_cat.repeat(n_rep,1)[idx,:]
+    #     else:
+    #         x_cat_i = []
+    #         x_cat_rep = []
+    #     S_i = self.model.forward_S_eval(X_i,z_i,x_cat_i).repeat_interleave(rep_int,dim=0)
+    #     S_j = self.model.forward_S_eval(X_rep,y_rep,x_cat_rep)
+    #     return torch.sum(torch.ceil(torch.relu(S_j-S_i)))/divisor
 
     def training_loop(self,epoch):
         self.dataloader.dataset.set(mode='train')
@@ -627,9 +631,6 @@ class hyperopt_training():
         elif self.selection_criteria == 'ibs':
             criteria = val_ibs
             criteria_test = test_ibs
-        elif self.selection_criteria == 'ibs_likelihood':
-            criteria = self.reg_lambda*val_ibs+val_likelihood  # minimize
-            criteria_test = test_ibs * self.reg_lambda  + test_likelihood
         elif self.selection_criteria == 'inll':
             criteria = val_inll
             criteria_test = test_inll

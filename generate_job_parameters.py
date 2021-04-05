@@ -31,8 +31,6 @@ def generate_job_params(directory='job_dir/'):
         'fold_idx': 0,
         'savedir':'conc_test_1',
         'direct_dif': ['autograd'],
-        'reg_mode': 'conc',
-        'ibs_est_deltas': 100,
         'use_sotle': False,
 
     }
