@@ -39,7 +39,7 @@ if __name__ == '__main__':
         'T_losses':[90],
         'alpha': [0.2],
         'sigma': [0.1],
-        'num_dur': [100],
+        'num_dur': [50],
 
     }
     for i in [1]:
