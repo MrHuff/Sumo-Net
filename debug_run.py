@@ -39,7 +39,7 @@ if __name__ == '__main__':
         'T_losses':[90],
         'alpha': [0.2],
         'sigma': [0.1],
-        'num_dur': [50],
+        'num_dur': [20],
 
     }
     for i in [1]:
@@ -59,9 +59,9 @@ if __name__ == '__main__':
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':2,
-            # 'net_type':'survival_net_basic',
+            'net_type':'survival_net_basic',
+            # 'net_type':'cox_time_benchmark',
             # 'net_type':'deephit_benchmark',
-            'net_type':'cox_time_benchmark',
             'objective': 'S_mean',
             'fold_idx':0 ,
             'savedir':'test',
@@ -69,6 +69,6 @@ if __name__ == '__main__':
             'hazard_post_process':False
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
-        training_obj.debug=True
+        # training_obj.debug=True
         training_obj.run()
         training_obj.post_process()

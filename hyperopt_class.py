@@ -222,23 +222,30 @@ class hyperopt_training():
             test_conc, test_ibs, test_inll =self.benchmark_eval(y=test_durations,events=self.dataloader.dataset.test_delta.float().squeeze().numpy(),
                                                                 wrapper=self.wrapper,X=self.dataloader.dataset.test_X.numpy())
             with torch.no_grad():
-                if self.hazard_post_process and self.net_type!='deephit_benchmark':
-                    coxL = HazardLikelihoodCoxTime(self.wrapper)
-                else:
-                    coxL = general_likelihood(self.wrapper)
-                val_likelihood = coxL.estimate_likelihood(torch.from_numpy(val_data[0]),
-                                                          torch.from_numpy(val_data[1][0]),
-                                                          torch.from_numpy(val_data[1][1]))
-                test_likelihood = coxL.estimate_likelihood(torch.from_numpy(test_data[0]),
-                                                          torch.from_numpy(test_data[1][0]),
-                                                          torch.from_numpy(test_data[1][1]))
+                val_likelihood_list = [1e99,1e99]
+                test_likelihood_list = [1e99,1e99]
+                class_list = []
+                general_class = general_likelihood(self.wrapper)
+                class_list.append(general_class)
+                if self.net_type!='deephit_benchmark':
+                    hazard_class = HazardLikelihoodCoxTime(self.wrapper)
+                    class_list.append(hazard_class)
+                for i,coxL in enumerate(class_list):
+                    val_likelihood = coxL.estimate_likelihood(torch.from_numpy(val_data[0]),
+                                                              torch.from_numpy(val_data[1][0]),
+                                                              torch.from_numpy(val_data[1][1]))
+                    test_likelihood = coxL.estimate_likelihood(torch.from_numpy(test_data[0]),
+                                                              torch.from_numpy(test_data[1][0]),
+                                                              torch.from_numpy(test_data[1][1]))
+                    val_likelihood_list[i]=val_likelihood.item()
+                    test_likelihood_list[i]=test_likelihood.item()
 
             results = self.parse_results(
-                                        val_likelihood.item(),
+                                        val_likelihood_list,
                                          val_conc,
                                          val_ibs,
                                          val_inll,
-                                        test_likelihood.item(),
+                                        test_likelihood_list,
                                          test_conc,
                                          test_ibs,
                                          test_inll)
@@ -314,8 +321,8 @@ class hyperopt_training():
         if self.debug:
             test_likelihood, test_conc, test_ibs, test_inll = self.test_score()
             self.writer.add_scalar('Loss/train', training_loss, i)
-            self.writer.add_scalar('Loss/val', val_likelihood, i)
-            self.writer.add_scalar('Loss/test', test_likelihood, i)
+            self.writer.add_scalar('Loss/val', val_likelihood[0], i)
+            self.writer.add_scalar('Loss/test', test_likelihood[0], i)
             self.writer.add_scalar('conc/val', conc, i)
             self.writer.add_scalar('conc/test', test_conc, i)
             self.writer.add_scalar('ibs/val', ibs, i)
@@ -323,10 +330,10 @@ class hyperopt_training():
             self.writer.add_scalar('inll/val', ibll, i)
             self.writer.add_scalar('inll/test', test_inll, i)
             print(
-                f'test_likelihood: {test_likelihood} test_conc: {test_conc} test_ibs: {test_ibs}  test_inll: {test_inll}')
+                f'test_likelihood: {test_likelihood[0]} test_likelihood: {test_likelihood[1]} test_conc: {test_conc} test_ibs: {test_ibs}  test_inll: {test_inll}')
             self.debug_list.append(test_ibs)
         if self.selection_criteria == 'train':
-            criteria = val_likelihood  # minimize #
+            criteria = val_likelihood[0]  # minimize #
         elif self.selection_criteria == 'concordance':
             criteria = -conc  # maximize
         elif self.selection_criteria == 'ibs':
@@ -336,8 +343,8 @@ class hyperopt_training():
         print(f'total_loss: {training_loss} likelihood: {likelihood} reg_loss: {reg_loss}')
         if self.dataset_string!='kkbox':
             tr_likelihood, tr_conc, tr_ibs, tr_ibll = self.train_score()
-            print(f'tr_likelihood: {tr_likelihood} tr_conc: {tr_conc} tr_ibs: {tr_ibs}  tr_ibll: {tr_ibll}')
-        print(f'criteria score: {criteria} val likelihood: {val_likelihood} val conc:{conc} val ibs: {ibs} val inll {ibll}')
+            print(f'tr_likelihood: {tr_likelihood[0]} tr_likelihood: {tr_likelihood[1]} tr_conc: {tr_conc} tr_ibs: {tr_ibs}  tr_ibll: {tr_ibll}')
+        print(f'criteria score: {criteria} val likelihood: {val_likelihood[0]} val likelihood: {val_likelihood[1]} val conc:{conc} val ibs: {ibs} val inll {ibll}')
         return criteria
     def eval_sotl(self,i,training_loss,likelihood,reg_loss):
         _ = self.do_metrics(training_loss, likelihood, reg_loss, i)
@@ -567,17 +574,21 @@ class hyperopt_training():
             f_log.append(f)
             durations.append(y.cpu().numpy())
             events.append(delta.cpu().numpy())
-        durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
+        non_normalized_durations = np.concatenate(durations)
+        durations = self.dataloader.dataset.invert_duration(non_normalized_durations).squeeze()
         #durations = np.concatenate(durations).squeeze()
         events = np.concatenate(events).squeeze()
         S_log = torch.cat(S_log)
         f_log = torch.cat(f_log)
         S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
+        S_series_container_2 = S_series_container.set_index(t_grid_np)
         t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
         S_series_container=S_series_container.set_index(t_grid_np)
         #S_series_container=S_series_container.set_index(t_grid_np)
         val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
-        return val_likelihood.item(),conc,ibs,inll
+        coxL = general_likelihood(self.model)
+        val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
+        return [val_likelihood_1.item(),val_likelihood.item()],conc,ibs,inll
 
     def train_score(self):
         self.dataloader.dataset.set(mode='train')
@@ -617,14 +628,16 @@ class hyperopt_training():
         val_likelihood,val_conc,val_ibs,val_inll = self.validation_score()
         test_likelihood,test_conc,test_ibs,test_inll = self.test_score()
 
+
+
         return self.parse_results(val_likelihood,val_conc,val_ibs,val_inll,
                                   test_likelihood,test_conc,test_ibs,test_inll)
 
     def parse_results(self, val_likelihood,val_conc,val_ibs,val_inll,
                       test_likelihood, test_conc, test_ibs, test_inll ):
         if self.selection_criteria == 'train':
-            criteria = val_likelihood
-            criteria_test = test_likelihood
+            criteria = val_likelihood[0]
+            criteria_test = test_likelihood[0]
         elif self.selection_criteria == 'concordance':
             criteria = -val_conc
             criteria_test = test_conc
@@ -638,11 +651,13 @@ class hyperopt_training():
         return {'loss': criteria,
                 'status': STATUS_OK,
                 'test_loss': criteria_test,
-                'test_loglikelihood':test_likelihood,
+                'test_loglikelihood_1':test_likelihood[0],
+                'test_loglikelihood_2':test_likelihood[1],
                  'test_conc':test_conc,
                  'test_ibs':test_ibs,
                  'test_inll':test_inll,
-                'val_loglikelihood': val_likelihood,
+                'val_loglikelihood_1': val_likelihood[0],
+                'val_loglikelihood_2': val_likelihood[1],
                 'val_conc': val_conc,
                 'val_ibs': val_ibs,
                 'val_inll': val_inll,
@@ -677,10 +692,10 @@ class hyperopt_training():
             reverse = False
 
         best_trial = sorted(trials.results, key=lambda x: x['test_loss'], reverse=reverse)[0] #low to high
-        data = [best_trial['test_loglikelihood'],best_trial['test_conc'],best_trial['test_ibs'],best_trial['test_inll'],
-                best_trial['val_loglikelihood'],best_trial['val_conc'],best_trial['val_ibs'],best_trial['val_inll']]
-        df = pd.DataFrame([data],columns=['test_loglikelihood','test_conc','test_ibs','test_inll',
-                                          'val_loglikelihood','val_conc','val_ibs','val_inll'])
+        data = [best_trial['test_loglikelihood_1'],best_trial['test_loglikelihood_2'],best_trial['test_conc'],best_trial['test_ibs'],best_trial['test_inll'],
+                best_trial['val_loglikelihood_1'],best_trial['val_loglikelihood_2'],best_trial['val_conc'],best_trial['val_ibs'],best_trial['val_inll']]
+        df = pd.DataFrame([data],columns=['test_loglikelihood_1','test_loglikelihood_2','test_conc','test_ibs','test_inll',
+                                          'val_loglikelihood_1','val_loglikelihood_2','val_conc','val_ibs','val_inll'])
         print(df)
         df.to_csv(self.save_path+'best_results.csv',index_label=False)
 

@@ -91,10 +91,46 @@ class HazardLikelihoodCoxTime():
         n = cum_hazard.shape[0]
         return -((hazard + 1e-6).log().sum() - cum_hazard.sum()) / n
 
-
 class general_likelihood():
     def __init__(self, pycox_model):
         self.model = pycox_model
+
+    def get_S_and_f_df(self, T, event,df):
+        chks = T.shape[0] // 5000 + 1
+        S_cat = []
+        f_cat = []
+        events = []
+        for t, e,surv_df in zip( torch.chunk(T, chks, dim=0), torch.chunk(event, chks, dim=0),np.array_split(df, chks,axis=0)):
+            surv_df = surv_df.drop_duplicates(keep='first')
+            times = torch.from_numpy(surv_df.index.values).float()
+            surv_tensor = torch.from_numpy(surv_df.values).t().float()
+            min_time = times.min().item()
+            min_bool = (t <= min_time).squeeze()
+            max_time = times.max().item()
+            max_bool = (t >= max_time).squeeze()
+            surv_tensor = surv_tensor[torch.logical_and(~min_bool, ~max_bool)]
+            t = t[torch.logical_and(~min_bool, ~max_bool)]
+            e = e[torch.logical_and(~min_bool, ~max_bool)]
+            bool_mask = t <= times
+            idx = torch.arange(bool_mask.shape[1], 0, -1)
+            tmp2 = bool_mask * idx
+            indices = torch.argmax(tmp2, 1, keepdim=True)
+            base_ind = torch.relu(indices - 1)
+            S_t_1 = torch.gather(surv_tensor, dim=1, index=indices)
+            S_t_0 = torch.gather(surv_tensor, dim=1, index=base_ind)
+            delta = times[indices] - times[base_ind]
+            t_prime = t - times[base_ind]
+            S = (1 - t_prime / delta) * S_t_0 + t_prime / delta * S_t_1
+            f = -(S_t_1 - S_t_0) / delta
+            events.append(e)
+            S_cat.append(S)
+            f_cat.append(f)
+        event = torch.cat(events).bool()
+        S_cat = torch.cat(S_cat, dim=0)
+        f_cat = torch.cat(f_cat, dim=0)
+        assert S_cat.shape[0] == event.shape[0]
+        assert f_cat.shape[0] == event.shape[0]
+        return S_cat[~event], f_cat[event]
 
     def get_S_and_f(self, X, T, event):
         chks = X.shape[0] // 5000 + 1
@@ -139,6 +175,14 @@ class general_likelihood():
             T = T.unsqueeze(-1)
         assert T.dim() == 2
         S, f = self.get_S_and_f(X, T, event)
+        L = self.calc_likelihood(S, f)
+        return L
+
+    def estimate_likelihood_df(self, T, event,df):
+        if T.dim() != 2:
+            T = T.unsqueeze(-1)
+        assert T.dim() == 2
+        S, f = self.get_S_and_f_df( T, event,df)
         L = self.calc_likelihood(S, f)
         return L
 
