@@ -10,12 +10,12 @@ import pandas as pd
 import shutil
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from pycox.models import CoxCC,CoxPH,CoxTime,DeepHitSingle
+from pycox.models import *
 from pycox.models.cox_time import MLPVanillaCoxTime
 import torchtuples as tt
 import time
 from utils.hazard_model_likelihood import HazardLikelihoodCoxTime,general_likelihood
-
+from utils.deephit_transformation_fix import *
 def square(x):
     return x**2
 
@@ -57,7 +57,6 @@ class fifo_list():
     def get_sum(self):
         return sum(self.fifo_list)
 
-
 class hyperopt_training():
     def __init__(self,job_param,hyper_param_space):
         self.d_out = job_param['d_out']
@@ -76,7 +75,6 @@ class hyperopt_training():
         self.fold_idx = job_param['fold_idx']
         self.savedir = job_param['savedir']
         self.use_sotle = job_param['use_sotle']
-        self.hazard_post_process = job_param['hazard_post_process']
         self.global_hyperit = 0
         self.debug = False
         torch.cuda.set_device(self.device)
@@ -142,12 +140,8 @@ class hyperopt_training():
         self.train_objective = get_objective(self.objective)
         if self.net_type=='survival_net':
             self.model = survival_net(**net_init_params).to(self.device)
-        elif self.net_type=='survival_net_variant':
-            self.model = survival_net_variant(**net_init_params).to(self.device)
         elif self.net_type=='survival_net_basic':
             self.model = survival_net_basic(**net_init_params).to(self.device)
-        elif self.net_type=='survival_net_nocov':
-            self.model = survival_net_nocov(**net_init_params).to(self.device)
         elif self.net_type=='ocean_net':
             self.model = ocean_net(**net_init_params).to(self.device)
         elif self.net_type=='cox_time_benchmark':
@@ -155,7 +149,7 @@ class hyperopt_training():
                                     num_nodes=net_init_params['layers'],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
-                                    activation=torch.nn.Tanh) #Actual net to be used
+                                   ) #Actual net to be used
             self.wrapper = CoxTime(self.model,tt.optim.Adam)
 
         elif self.net_type=='deepsurv_benchmark':
@@ -163,24 +157,26 @@ class hyperopt_training():
                                     num_nodes=net_init_params['layers'],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
-                                    activation=torch.nn.Tanh,out_features=1) #Actual net to be used
+                                    out_features=1) #Actual net to be used
             self.wrapper = CoxPH(self.model,tt.optim.Adam)
         elif self.net_type=='deephit_benchmark':
-            labtrans = DeepHitSingle.label_transform(parameters_in['num_dur'])
+            print('num_dur', parameters_in['num_dur'])
+            # labtrans = DeepHitSingle.label_transform(parameters_in['num_dur'])
+            labtrans = LabTransDiscreteTime(parameters_in['num_dur'])
 
         elif self.net_type=='cox_CC_benchmark':
             self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                     num_nodes=net_init_params['layers'],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
-                                    activation=torch.nn.Tanh,out_features=1) #Actual net to be used
+                                   out_features=1) #Actual net to be used
             self.wrapper = CoxCC(self.model,tt.optim.Adam)
         elif self.net_type=='cox_linear_benchmark':
             self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                     num_nodes=[],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
-                                    activation=torch.nn.Tanh,out_features=1) #Actual net to be used
+                                    out_features=1) #Actual net to be used
             self.wrapper = CoxPH(self.model,tt.optim.Adam)
 
         if self.net_type in ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']:
@@ -189,24 +185,28 @@ class hyperopt_training():
             y_test = (self.dataloader.dataset.test_y.squeeze().numpy(),self.dataloader.dataset.test_delta.squeeze().numpy())
             if self.net_type=='deephit_benchmark':
                 val_data_eval = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
-
-                y_train = labtrans.fit_transform(*y_train)
-                y_val = labtrans.transform(*y_val)
+                y_train = labtrans.fit_transform(y_train[0],y_train[1])
+                val_dur,val_event,bool_fixer_minus_1 = labtrans.transform(y_val[0],y_val[1])
+                y_val = (val_dur,val_event)
+                #Need to unfuck -1 markers...
                 self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                                      num_nodes=net_init_params['layers'],
                                                      batch_norm=False,
                                                      dropout=net_init_params['dropout'],
-                                                     activation=torch.nn.Tanh, out_features=labtrans.out_features)  # Actual net to be used
+                                                    out_features=labtrans.out_features)  # Actual net to be used
                 self.wrapper = DeepHitSingle(self.model, tt.optim.Adam, alpha=parameters_in['alpha'],
                                              sigma=parameters_in['sigma'],duration_index=labtrans.cuts)
+                X_tmp = self.dataloader.dataset.val_X.numpy()[bool_fixer_minus_1]
+                val_data = tt.tuplefy(X_tmp, y_val)
 
-                # y_test = labtrans.transform(*y_test)
-            val_data = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
+            else:
+                val_data = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
             test_data = tt.tuplefy(self.dataloader.dataset.test_X.numpy(), y_test)
 
             verbose = True
             self.wrapper.optimizer.set_lr(parameters_in['lr'])
             callbacks = [tt.callbacks.EarlyStopping()]
+            print(self.model)
             log = self.wrapper.fit(input=self.dataloader.dataset.train_X.numpy(),
                               target=y_train, epochs=self.total_epochs,callbacks= callbacks, verbose=verbose,
                             val_data=val_data)
@@ -526,6 +526,7 @@ class hyperopt_training():
         return val_likelihood.item(), conc, ibs, inll
 
     def eval_loop(self,grid_size):
+        self.model.eval()
         S_series_container = []
         S_log = []
         f_log = []
@@ -588,6 +589,7 @@ class hyperopt_training():
         val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
         coxL = general_likelihood(self.model)
         val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
+        self.model.train()
         return [val_likelihood_1.item(),val_likelihood.item()],conc,ibs,inll
 
     def train_score(self):

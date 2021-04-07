@@ -24,7 +24,7 @@ if __name__ == '__main__':
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.Tanh()],
-        'depth_x': [2],
+        'depth_x': [1],
         'width_x': [32], #adapt for smaller time net
         'depth_t': [3],
         'width_t': [1], #ads
@@ -33,7 +33,7 @@ if __name__ == '__main__':
         'bs': [100],
         'lr': [1e-2],
         'direct_dif': ['autograd'],
-        'dropout': [0.0],
+        'dropout': [0.5],
         'eps':[1e-4],
         'weight_decay':[0.],
         'T_losses':[90],
@@ -59,14 +59,15 @@ if __name__ == '__main__':
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':2,
-            'net_type':'survival_net_basic',
+            # 'net_type':'survival_net_basic',
             # 'net_type':'cox_time_benchmark',
-            # 'net_type':'deephit_benchmark',
+            'net_type':'deephit_benchmark',
+            # 'net_type':'cox_linear_benchmark',
+            # 'net_type':'deepsurv_benchmark',
             'objective': 'S_mean',
             'fold_idx':0 ,
             'savedir':'test',
             'use_sotle':False,
-            'hazard_post_process':False
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         # training_obj.debug=True

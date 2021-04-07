@@ -60,7 +60,10 @@ class HazardLikelihoodCoxTime():
         haz_list = []
         for x, t in zip(torch.chunk(X, chks, dim=0), torch.chunk(T, chks, dim=0)):
             base_haz = self.get_base_haz_interpolate(t)
-            exp_g = self.model.predict((x, t)).exp().cpu()
+            if self.model.__class__.__name__=='CoxTime':
+                exp_g = self.model.predict((x, t)).exp().cpu()
+            else:
+                exp_g = self.model.predict((x)).exp().cpu()
             haz_list.append(exp_g * base_haz)
         hazard = torch.cat(haz_list, dim=0)
         return hazard
@@ -72,7 +75,10 @@ class HazardLikelihoodCoxTime():
             vec_hazard = self.get_vec_base(t)
             new_x = x.repeat_interleave(self.base_haz_time.shape[0], dim=0)
             new_t = self.base_haz_time.repeat(x.shape[0]).unsqueeze(-1)
-            exp_g = self.model.predict((new_x, new_t)).view(x.shape[0], -1).exp().cpu()
+            if self.model.__class__.__name__=='CoxTime':
+                exp_g = self.model.predict((new_x, new_t)).view(x.shape[0], -1).exp().cpu()
+            else:
+                exp_g = self.model.predict((new_x)).view(x.shape[0], -1).exp().cpu()
             cum_hazard = torch.sum(vec_hazard * exp_g, dim=1)
             c_haz_list.append(cum_hazard)
         cum_hazard = torch.cat(c_haz_list, dim=0)
@@ -122,6 +128,7 @@ class general_likelihood():
             t_prime = t - times[base_ind]
             S = (1 - t_prime / delta) * S_t_0 + t_prime / delta * S_t_1
             f = -(S_t_1 - S_t_0) / delta
+            strict_bool_filter = (f>0).squeeze()
             events.append(e)
             S_cat.append(S)
             f_cat.append(f)
