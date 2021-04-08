@@ -106,13 +106,15 @@ class general_likelihood():
         S_cat = []
         f_cat = []
         events = []
+        df = df.T
         for t, e,surv_df in zip( torch.chunk(T, chks, dim=0), torch.chunk(event, chks, dim=0),np.array_split(df, chks,axis=0)):
+            surv_df = surv_df.T
             surv_df = surv_df.drop_duplicates(keep='first')
             times = torch.from_numpy(surv_df.index.values).float()
             surv_tensor = torch.from_numpy(surv_df.values).t().float()
             min_time = times.min().item()
-            min_bool = (t <= min_time).squeeze()
             max_time = times.max().item()
+            min_bool = (t <= min_time).squeeze()
             max_bool = (t >= max_time).squeeze()
             surv_tensor = surv_tensor[torch.logical_and(~min_bool, ~max_bool)]
             t = t[torch.logical_and(~min_bool, ~max_bool)]
@@ -128,7 +130,6 @@ class general_likelihood():
             t_prime = t - times[base_ind]
             S = (1 - t_prime / delta) * S_t_0 + t_prime / delta * S_t_1
             f = -(S_t_1 - S_t_0) / delta
-            strict_bool_filter = (f>0).squeeze()
             events.append(e)
             S_cat.append(S)
             f_cat.append(f)
