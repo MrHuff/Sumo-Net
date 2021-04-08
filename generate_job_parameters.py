@@ -19,7 +19,7 @@ def generate_job_params(directory='job_dir'):
     base_dict={
         'dataset': 0,
         'seed':1337,
-        'total_epochs':100,
+        'total_epochs':1,
         'patience':21,
         'hyperits':20,
         'grid_size':100,
@@ -35,10 +35,10 @@ def generate_job_params(directory='job_dir'):
     }
     counter = 0
     for fold_idx in [0,1,2,3,4]:
-        for dataset in [1]:
+        for dataset in [2]:
             for l_type in [0]:
-                for net_t in ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']:
-                # for net_t in ['deephit_benchmark']:
+                # for net_t in ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']:
+                for net_t in ['survival_net_basic']:
                     base_dict['dataset']=dataset
                     base_dict['loss_type']=l_type
                     base_dict['net_type']=net_t
