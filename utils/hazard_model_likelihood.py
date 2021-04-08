@@ -109,7 +109,9 @@ class general_likelihood():
         df = df.T
         for t, e,surv_df in zip( torch.chunk(T, chks, dim=0), torch.chunk(event, chks, dim=0),np.array_split(df, chks,axis=0)):
             surv_df = surv_df.T
-            surv_df = surv_df.drop_duplicates(keep='first')
+            tmp_df = surv_df.drop_duplicates(keep='first')
+            if tmp_df.shape[0]>2:
+                surv_df=tmp_df
             times = torch.from_numpy(surv_df.index.values).float()
             surv_tensor = torch.from_numpy(surv_df.values).t().float()
             min_time = times.min().item()
