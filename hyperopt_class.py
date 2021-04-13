@@ -76,9 +76,10 @@ class hyperopt_training():
         self.savedir = job_param['savedir']
         self.use_sotle = job_param['use_sotle']
         self.global_hyperit = 0
+        self.best = np.inf
         self.debug = False
         torch.cuda.set_device(self.device)
-        self.save_path = f'./{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
+        self.save_path = f'{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
         else:
@@ -240,6 +241,14 @@ class hyperopt_training():
                     val_likelihood_list[i]=val_likelihood.item()
                     test_likelihood_list[i]=test_likelihood.item()
 
+            if self.net_type in ['deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark']:
+                val_loss = self.wrapper.partial_log_likelihood(*val_data).mean()
+            elif self.net_type in ['cox_time_benchmark']:
+
+                val_loss = callbacks[0].cur_best
+
+            else:
+                val_loss = None
             results = self.parse_results(
                                         val_likelihood_list,
                                          val_conc,
@@ -248,7 +257,12 @@ class hyperopt_training():
                                         test_likelihood_list,
                                          test_conc,
                                          test_ibs,
-                                         test_inll)
+                                         test_inll,
+                                        val_loss_cox=val_loss)
+            if results['test_loss']<self.best:
+                self.best = results['test_loss']
+                self.dump_model()
+
         else:
             self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=self.patience//4,min_lr=1e-3,factor=0.9)
@@ -332,7 +346,7 @@ class hyperopt_training():
             print(
                 f'test_likelihood: {test_likelihood[0]} test_likelihood: {test_likelihood[1]} test_conc: {test_conc} test_ibs: {test_ibs}  test_inll: {test_inll}')
             self.debug_list.append(test_ibs)
-        if self.selection_criteria == 'train':
+        if self.selection_criteria in ['train','likelihood']:
             criteria = val_likelihood[0]  # minimize #
         elif self.selection_criteria == 'concordance':
             criteria = -conc  # maximize
@@ -616,7 +630,6 @@ class hyperopt_training():
 
     def full_loop(self):
         self.counter = 0
-        self.best = np.inf
         self.sotl_e_list = fifo_list(n=self.T_losses)
         if self.debug:
             self.writer =SummaryWriter()
@@ -636,8 +649,14 @@ class hyperopt_training():
                                   test_likelihood,test_conc,test_ibs,test_inll)
 
     def parse_results(self, val_likelihood,val_conc,val_ibs,val_inll,
-                      test_likelihood, test_conc, test_ibs, test_inll ):
+                      test_likelihood, test_conc, test_ibs, test_inll,val_loss_cox=None):
         if self.selection_criteria == 'train':
+            if val_loss_cox is None:
+                criteria = val_likelihood[0]
+            else:
+                criteria = val_loss_cox
+            criteria_test = test_likelihood[0]
+        if self.selection_criteria == 'likelihood':
             criteria = val_likelihood[0]
             criteria_test = test_likelihood[0]
         elif self.selection_criteria == 'concordance':
@@ -684,7 +703,7 @@ class hyperopt_training():
         trials = pickle.load(open(self.save_path + 'hyperopt_database.p',
                          "rb"))
 
-        if self.selection_criteria == 'train':
+        if self.selection_criteria in ['train','likelihood']:
             reverse = False
         elif self.selection_criteria == 'concordance':
             reverse = True

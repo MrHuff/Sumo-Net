@@ -35,7 +35,8 @@ datasets = ['support',
 
 
 loss_type = ['S_mean','hazard_mean']
-#Write serious job script, figure out post processing pipeline...
+selection_criteria = ['train','concordance','ibs','inll','likelihood']
+
 if __name__ == '__main__':
     input_args = vars(job_parser().parse_args())
     fold = input_args['job_path']
@@ -102,7 +103,7 @@ if __name__ == '__main__':
         'device': device,
         'patience': args['patience'],
         'hyperits':  args['hyperits'],
-        'selection_criteria': 'train',
+        'selection_criteria': selection_criteria[args['selection_criteria']],
         'grid_size':args['grid_size'],
         'test_grid_size': args['test_grid_size'],
         'validation_interval': args['validation_interval'],

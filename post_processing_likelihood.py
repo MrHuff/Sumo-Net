@@ -2,7 +2,7 @@ from serious_run import *
 from astropy.table import Table
 
 def get_best_params(path,selection_criteria):
-    if selection_criteria == 'test_loglikelihood_1':
+    if selection_criteria in ['test_loglikelihood_1','test_loglikelihood_2','test_loss']:
         reverse = False
     elif selection_criteria == 'test_conc':
         reverse = True
@@ -19,10 +19,10 @@ def get_best_params(path,selection_criteria):
 if __name__ == '__main__':
     folder = 'likelihood_jobs_results'
     objective = ['S_mean']
-    criteria =['test_loglikelihood_1','test_conc','test_ibs','test_inll']
+    criteria =['test_loss','test_conc','test_ibs','test_inll']
     model = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
+    c_list = [0,0,0,0,0,0]
     result_name = f'{folder}_results'
-    c = criteria[0]
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
         cols.append(criteria_name+'_mean')
@@ -30,7 +30,7 @@ if __name__ == '__main__':
     df = []
     dataset_indices = [0,1,2,3]
     for o in objective:
-        for net_type in model:
+        for net_type,c in zip(model,c_list):
             for d in dataset_indices:
                 d_str = datasets[d]
                 row = [o,net_type,d_str]
@@ -38,7 +38,7 @@ if __name__ == '__main__':
                 for s in [1337]:
                     for f_idx in [0,1,2,3,4]:
                         try:
-                            vals = get_best_params(f'./{folder}/{d_str}_seed={s}_fold_idx={f_idx}_objective={o}_{net_type}/hyperopt_database.p',c)
+                            vals = get_best_params(f'./{folder}/{d_str}_seed={s}_fold_idx={f_idx}_objective={o}_{net_type}/hyperopt_database.p',criteria[c])
                             desc_df.append(vals)
                         except Exception as e:
                             print(e)
