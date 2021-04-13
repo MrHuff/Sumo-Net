@@ -2,8 +2,99 @@ import pycox
 import matplotlib.pyplot as plt
 import torch
 import numpy as np
+from pycox.evaluation import EvalSurv
 
 
+class ApproximateLikelihood:
+    '''
+    Enter a model, covariates, times and events
+    model: a pycox model
+    x: 2d numpy array
+    t: 1d numpy array
+    d: 1d numpy array
+    baseline_sample_size: how many samples to compute the the baseline hazard
+    half_width: k >=1 and densities are evaluated using T_{i-k+1} and T_{i+k}
+    '''
+
+    def __init__(self, model, x, t, d, baseline_sample_size, half_width):
+
+        self.model = model
+        self.t = t
+        self.d = d
+        self.x = x
+        self.baseline_sample_size = baseline_sample_size
+        self.n = len(self.t)
+        self.half_width = int(half_width)
+        self.mask_observed = self.d == 1
+        self.densities = None
+        self.survival = None
+        self.log_likelihood = None
+
+    def drop_outliers(self, min_time, max_time):
+
+        # Select the outliers and reset self.x, t, d and n
+        outlier_mask = (self.t > max_time) or (self.t < min_time)
+        self.t = self.t[~outlier_mask]
+        self.d = self.d[~outlier_mask]
+        self.x = self.x[~outlier_mask]
+        self.n = len(self.t)
+
+        return None
+
+    def get_densities(self):
+
+        # Get the survival dataframe for x_observed, drop duplicate rows
+        survival_df_observed = self.model.predict_surv_df(self.x[self.mask_observed]).drop_duplicates(keep='first')
+        assert survival_df_observed.index.is_monotonic
+        min_index, max_index = 0, len(survival_df_observed.index.values) - 1
+
+        # Create an Eval object
+        eval_observed = EvalSurv(survival_df_observed, self.t[self.mask_observed], self.d[self.mask_observed])
+
+        # Get the indices of the survival_df
+        indices = eval_observed.idx_at_times(self.t[self.mask_observed])
+        left_index = np.minimum(np.maximum(indices - self.half_width + 1, min_index), max_index - 1)
+        right_index = np.minimum(indices + self.half_width, max_index)
+
+        # Get the survival probabilities and times
+        left_survival = np.array([survival_df_observed.iloc[left_index[i], i] for i in range(len(left_index))])
+        right_survival = np.array([survival_df_observed.iloc[right_index[i], i] for i in range(len(right_index))])
+        left_time = np.array(survival_df_observed.index[left_index])
+        right_time = np.array(survival_df_observed.index[right_index])
+
+        # Approximate the derivative
+        delta_survival = left_survival - right_survival
+        delta_t = right_time - left_time
+        self.densities = delta_survival / delta_t
+
+        return self.densities
+
+    def get_survival(self):
+
+        # Create the survival_df and the Eval object
+        survival_df_censored = self.model.predict_surv_df(self.x[~self.mask_observed]).drop_duplicates(keep='first')
+        eval_censored = EvalSurv(survival_df_censored, self.t[~self.mask_observed], self.d[~self.mask_observed])
+
+        # Get a list of indices of the censored times
+        indices = eval_censored.idx_at_times(self.t[~self.mask_observed])
+
+        # Select the survival probabilities
+        self.survival = np.array([survival_df_censored.iloc[indices[i], i] for i in range(len(indices))])
+
+        return self.survival
+
+    def get_approximated_likelihood(self):
+
+        # Get the survival probabilities and the densities
+        _ = self.model.compute_baseline_hazards(sample=self.baseline_sample_size)
+        self.get_survival()
+        self.get_densities()
+
+        # Compute the log-likelihood
+        self.log_likelihood = np.mean(np.log(np.concatenate((self.survival, self.densities)) + 1e-7))
+
+        return self.log_likelihood
+    
 class HazardLikelihoodCoxTime():
     # work with cumhazard instead and interpolate that one instead
     # interpolation linear in cumulative hazard early and after...
