@@ -1,3 +1,4 @@
+import pycox_local.pycox.datasets
 from hyperopt_class import *
 import torch
 import GPUtil
@@ -6,6 +7,11 @@ import warnings
 warnings.simplefilter("ignore")
 from generate_job_parameters import load_obj
 
+pycox_local.pycox.datasets.support.read_df()
+pycox_local.pycox.datasets.flchain.read_df()
+pycox_local.pycox.datasets.metabric.read_df()
+pycox_local.pycox.datasets.gbsg.read_df()
+pycox_local.pycox.datasets.kkbox.read_df()
 def job_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--job_path', type=str, nargs='?', default='', help='which dataset to run')
@@ -35,7 +41,8 @@ datasets = ['support',
 
 
 loss_type = ['S_mean','hazard_mean']
-#Write serious job script, figure out post processing pipeline...
+selection_criteria = ['train','concordance','ibs','inll','likelihood']
+
 if __name__ == '__main__':
     input_args = vars(job_parser().parse_args())
     fold = input_args['job_path']
@@ -82,7 +89,7 @@ if __name__ == '__main__':
         'lr': [1e-2],
         'direct_dif': [args['direct_dif']],
         'dropout': [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7], #[0.0,0.7]
-        'eps': [1e-3,1e-4,1e-5],
+        'eps': [1.0],
         'weight_decay': [0.0,0.01,0.02,0.05,0.1,0.2,0.4],
         'T_losses': [90],
     }
@@ -92,8 +99,8 @@ if __name__ == '__main__':
         hyper_param_space['num_dur'] = [50, 100, 200, 400]
 
 
-    devices = GPUtil.getAvailable(order='memory', limit=1)
-    device = devices[0]
+    # devices = GPUtil.getAvailable(order='memory', limit=1)
+    device = 0
     job_params = {
         'd_out': 1,
         'dataset_string': datasets[args['dataset']],
@@ -102,7 +109,7 @@ if __name__ == '__main__':
         'device': device,
         'patience': args['patience'],
         'hyperits':  args['hyperits'],
-        'selection_criteria': 'train',
+        'selection_criteria': selection_criteria[args['selection_criteria']],
         'grid_size':args['grid_size'],
         'test_grid_size': args['test_grid_size'],
         'validation_interval': args['validation_interval'],

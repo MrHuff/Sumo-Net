@@ -1,17 +1,13 @@
-from pycox.datasets import kkbox,support,metabric,gbsg,flchain
 from torch.utils.data.dataset import Dataset
-from torch.utils.data.dataloader import DataLoader
-from pycox.preprocessing.feature_transforms import *
+from pycox_local.pycox.preprocessing.feature_transforms import *
 import torch
-from .toy_data_generation import toy_data_class
 from sklearn.preprocessing import MinMaxScaler,StandardScaler
 from sklearn_pandas import DataFrameMapper
 from sklearn.model_selection import train_test_split
 from sklearn.model_selection import StratifiedKFold
 import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
-from lifelines import KaplanMeierFitter
-import pycox.utils as utils
+import pycox_local.pycox.utils as utils
 
 class toy_dataset():
     def __init__(self,name):

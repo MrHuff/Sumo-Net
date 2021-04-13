@@ -6,10 +6,10 @@ from sklearn_pandas import DataFrameMapper
 import torch
 import torchtuples as tt
 
-from pycox.datasets import metabric
-from pycox.models import CoxCC,CoxPH,CoxTime
-from pycox.evaluation import EvalSurv
-from pycox.models.cox_time import MLPVanillaCoxTime
+from pycox_local.pycox.datasets import metabric
+from pycox_local.pycox.models import CoxCC,CoxPH,CoxTime
+from pycox_local.pycox.evaluation import EvalSurv
+from pycox_local.pycox.models.cox_time import MLPVanillaCoxTime
 
 
 np.random.seed(1234)

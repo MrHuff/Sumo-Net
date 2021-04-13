@@ -1,9 +1,106 @@
-import pycox
-import matplotlib.pyplot as plt
 import torch
 import numpy as np
+from pycox_local.pycox.evaluation import EvalSurv
 
 
+class ApproximateLikelihood:
+    '''
+    Enter a model, covariates, times and events
+    model: a pycox_local model
+    x: 2d numpy array
+    t: 1d numpy array
+    d: 1d numpy array
+    baseline_sample_size: how many samples to compute the the baseline hazard
+    half_width: k >=1 and densities are evaluated using T_{i-k+1} and T_{i+k}
+    '''
+
+    def __init__(self, model, x, t, d, baseline_sample_size, half_width):
+
+        self.model = model
+        self.t = t
+        self.d = d
+        self.x = x
+        self.baseline_sample_size = baseline_sample_size
+        self.n = len(self.t)
+        self.half_width = int(half_width)
+        self.mask_observed = self.d == 1
+        self.densities = None
+        self.survival = None
+        self.log_likelihood = None
+
+    def drop_outliers(self, min_time, max_time):
+
+        # Select the outliers and reset self.x, t, d and n
+        outlier_mask = (self.t > max_time) or (self.t < min_time)
+        self.t = self.t[~outlier_mask]
+        self.d = self.d[~outlier_mask]
+        self.x = self.x[~outlier_mask]
+        self.n = len(self.t)
+
+        return None
+
+    def get_densities(self,surv_df_raw=None):
+
+        # Get the survival dataframe for x_observed, drop duplicate rows
+        if surv_df_raw is None:
+            survival_df_observed = self.model.predict_surv_df(self.x[self.mask_observed]).drop_duplicates(keep='first')
+        else:
+            np_bool = self.mask_observed
+            survival_df_observed = surv_df_raw[np_bool].transpose().drop_duplicates(keep='first')
+        assert survival_df_observed.index.is_monotonic
+        min_index, max_index = 0, len(survival_df_observed.index.values) - 1
+
+        # Create an Eval object
+        eval_observed = EvalSurv(survival_df_observed, self.t[self.mask_observed], self.d[self.mask_observed])
+
+        # Get the indices of the survival_df
+        indices = eval_observed.idx_at_times(self.t[self.mask_observed])
+        left_index = np.minimum(np.maximum(indices - self.half_width + 1, min_index), max_index - 1).squeeze()
+        right_index = np.minimum(indices + self.half_width, max_index).squeeze()
+
+        # Get the survival probabilities and times
+        left_survival = np.array([survival_df_observed.iloc[left_index[i], i] for i in range(len(left_index))])
+        right_survival = np.array([survival_df_observed.iloc[right_index[i], i] for i in range(len(right_index))])
+        left_time = np.array(survival_df_observed.index[left_index])
+        right_time = np.array(survival_df_observed.index[right_index])
+
+        # Approximate the derivative
+        delta_survival = left_survival - right_survival
+        delta_t = right_time - left_time
+        self.densities = delta_survival / delta_t
+
+        return self.densities
+
+    def get_survival(self,surv_df_raw=None):
+
+        # Create the survival_df and the Eval object
+        if surv_df_raw is None:
+            survival_df_censored = self.model.predict_surv_df(self.x[~self.mask_observed]).drop_duplicates(keep='first')
+        else:
+            np_bool = ~self.mask_observed
+            survival_df_censored = surv_df_raw[np_bool].transpose().drop_duplicates(keep='first')
+        eval_censored = EvalSurv(survival_df_censored, self.t[~self.mask_observed], self.d[~self.mask_observed])
+
+        # Get a list of indices of the censored times
+        indices = eval_censored.idx_at_times(self.t[~self.mask_observed]).squeeze()
+
+        # Select the survival probabilities
+        self.survival = np.array([survival_df_censored.iloc[indices[i], i] for i in range(len(indices))])
+
+        return self.survival
+
+    def get_approximated_likelihood(self,input_dat,target_dat, surv_df_raw=None):
+        # Get the survival probabilities and the densities
+        if surv_df_raw is None and self.model.__class__.__name__!= 'DeepHitSingle':
+            _ = self.model.compute_baseline_hazards(sample=self.baseline_sample_size,input=input_dat,target=target_dat)
+        self.get_survival(surv_df_raw)
+        self.get_densities(surv_df_raw)
+
+        # Compute the log-likelihood
+        self.log_likelihood = np.mean(np.log(np.concatenate((self.survival, self.densities)) + 1e-7))
+
+        return self.log_likelihood
+    
 class HazardLikelihoodCoxTime():
     # work with cumhazard instead and interpolate that one instead
     # interpolation linear in cumulative hazard early and after...
@@ -200,81 +297,3 @@ class general_likelihood():
         n = S.shape[0] + f.shape[0]
         return -((f + 1e-6).log().sum() + (S + 1e-6).log().sum()) / n
 
-# if __name__ == '__main__':
-#     import numpy as np
-#     from sklearn.preprocessing import StandardScaler
-#     from sklearn_pandas import DataFrameMapper
-#     import torch
-#     import torchtuples as tt
-#
-#     from pycox.datasets import metabric
-#     from pycox.models import CoxCC, CoxPH, CoxTime
-#     from pycox.evaluation import EvalSurv
-#     from pycox.models.cox_time import MLPVanillaCoxTime
-#
-#     np.random.seed(1234)
-#     _ = torch.manual_seed(123)
-#
-#     df_train = metabric.read_df()
-#     df_test = df_train.sample(frac=0.2)
-#     df_train = df_train.drop(df_test.index)
-#     df_val = df_train.sample(frac=0.25)
-#     df_train = df_train.drop(df_val.index)
-#
-#     cols_standardize = ['x0', 'x1', 'x2', 'x3', 'x8']
-#     cols_leave = ['x4', 'x5', 'x6', 'x7']
-#
-#     standardize = [([col], StandardScaler()) for col in cols_standardize]
-#     leave = [(col, None) for col in cols_leave]
-#
-#     x_mapper = DataFrameMapper(standardize + leave)
-#
-#     x_train = x_mapper.fit_transform(df_train).astype('float32')
-#     x_val = x_mapper.transform(df_val).astype('float32')
-#     x_test = x_mapper.transform(df_test).astype('float32')
-#
-#     labtrans = CoxTime.label_transform()
-#     get_target = lambda df: (df['duration'].values, df['event'].values)
-#     y_train = labtrans.fit_transform(*get_target(df_train))
-#     y_val = labtrans.transform(*get_target(df_val))
-#     durations_test, events_test = get_target(df_test)
-#     val = tt.tuplefy(x_val, y_val)
-#
-#     in_features = x_train.shape[1]
-#     num_nodes = [32, 32]
-#     out_features = 1
-#     batch_norm = True
-#     dropout = 0.1
-#     output_bias = False
-#
-#     # net = tt.practical.MLPVanilla(in_features, num_nodes, out_features, batch_norm,
-#     #                               dropout, output_bias=output_bias)
-#     net = MLPVanillaCoxTime(in_features, num_nodes, batch_norm, dropout)  # Actual net to be used
-#     model = CoxTime(net, tt.optim.Adam)  # the cox time framework, dont do this..
-#     model.optimizer.set_lr(0.01)
-#     epochs = 512
-#     callbacks = [tt.callbacks.EarlyStopping()]
-#     verbose = True
-#     batch_size = 256
-#     print(x_train.shape)
-#     log = model.fit(x_train, y_train, batch_size, epochs, callbacks, verbose,
-#                     val_data=val.repeat(10).cat())
-#     base_haz = model.compute_baseline_hazards()
-#     cum_base_haz = model.compute_baseline_cumulative_hazards()
-#     t,s = torch.from_numpy(base_haz.index.values),torch.from_numpy(base_haz.values)
-#     reference_t = torch.tensor([[-100.0],[1.5],[200.0]])
-#     survL = general_likelihood(model)
-#     L_S = survL.estimate_likelihood(torch.from_numpy(x_val),(torch.from_numpy(y_val[0]).unsqueeze(-1),torch.from_numpy(y_val[1])))
-#     print(L_S)
-#     coxL = HazardLikelihoodCoxTime(model)
-#     L = coxL.estimate_likelihood(torch.from_numpy(x_val),(torch.from_numpy(y_val[0]).unsqueeze(-1),torch.from_numpy(y_val[1])))
-#     print(L)
-# surv_base = np.exp(-model.compute_baseline_cumulative_hazards())
-# surv_base.plot()
-# plt.savefig('test.png')
-# surv = model.predict_surv_df(x_test)
-# ev = EvalSurv(surv, durations_test, events_test, censor_surv='km')
-# conc = ev.concordance_td()
-# time_grid = np.linspace(durations_test.min(), durations_test.max(), 100)
-# ibs = ev.integrated_brier_score(time_grid)
-# inll = ev.integrated_nbll(time_grid)

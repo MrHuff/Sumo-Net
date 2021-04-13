@@ -5,13 +5,13 @@ import torch
 import os
 import pickle
 import numpy as np
-from pycox.evaluation import EvalSurv
+from pycox_local.pycox.evaluation import EvalSurv
 import pandas as pd
 import shutil
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from pycox.models import *
-from pycox.models.cox_time import MLPVanillaCoxTime
+from pycox_local.pycox.models import *
+from pycox_local.pycox.models.cox_time import MLPVanillaCoxTime
 import torchtuples as tt
 import time
 from utils.hazard_model_likelihood import HazardLikelihoodCoxTime,general_likelihood
@@ -76,13 +76,11 @@ class hyperopt_training():
         self.savedir = job_param['savedir']
         self.use_sotle = job_param['use_sotle']
         self.global_hyperit = 0
+        self.best = np.inf
         self.debug = False
         torch.cuda.set_device(self.device)
-        self.save_path = f'./{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
+        self.save_path = f'{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
-            os.makedirs(self.save_path)
-        else:
-            shutil.rmtree(self.save_path)
             os.makedirs(self.save_path)
         self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','T_losses']
         self.deephit_params= ['alpha','sigma','num_dur']
@@ -224,22 +222,30 @@ class hyperopt_training():
             with torch.no_grad():
                 val_likelihood_list = [1e99,1e99]
                 test_likelihood_list = [1e99,1e99]
-                class_list = []
-                general_class = general_likelihood(self.wrapper)
-                class_list.append(general_class)
-                if self.net_type!='deephit_benchmark':
-                    hazard_class = HazardLikelihoodCoxTime(self.wrapper)
-                    class_list.append(hazard_class)
-                for i,coxL in enumerate(class_list):
-                    val_likelihood = coxL.estimate_likelihood(torch.from_numpy(val_data[0]),
-                                                              torch.from_numpy(val_data[1][0]),
-                                                              torch.from_numpy(val_data[1][1]))
-                    test_likelihood = coxL.estimate_likelihood(torch.from_numpy(test_data[0]),
-                                                              torch.from_numpy(test_data[1][0]),
-                                                              torch.from_numpy(test_data[1][1]))
-                    val_likelihood_list[i]=val_likelihood.item()
-                    test_likelihood_list[i]=test_likelihood.item()
+                # class_list = []
+                # general_class = general_likelihood(self.wrapper)
+                # class_list.append(general_class)
+                # if self.net_type!='deephit_benchmark':
+                #     hazard_class = HazardLikelihoodCoxTime(self.wrapper)
+                #     class_list.append(hazard_class)
+                # for i,coxL in enumerate(class_list):
+                #     val_likelihood = coxL.estimate_likelihood(torch.from_numpy(val_data[0]),
+                #                                               torch.from_numpy(val_data[1][0]),
+                #                                               torch.from_numpy(val_data[1][1]))
+                #     test_likelihood = coxL.estimate_likelihood(torch.from_numpy(test_data[0]),
+                #                                               torch.from_numpy(test_data[1][0]),
+                #                                               torch.from_numpy(test_data[1][1]))
+                #     val_likelihood_list[i]=val_likelihood.item()
+                #     test_likelihood_list[i]=test_likelihood.item()
 
+            if self.net_type in ['deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark']:
+                val_loss = self.wrapper.partial_log_likelihood(*val_data).mean()
+            elif self.net_type in ['cox_time_benchmark']:
+
+                val_loss = callbacks[0].cur_best
+
+            else:
+                val_loss = None
             results = self.parse_results(
                                         val_likelihood_list,
                                          val_conc,
@@ -248,8 +254,15 @@ class hyperopt_training():
                                         test_likelihood_list,
                                          test_conc,
                                          test_ibs,
-                                         test_inll)
+                                         test_inll,
+                                        val_loss_cox=val_loss)
+            if results['test_loss']<self.best:
+                self.best = results['test_loss']
+                print(self.best)
+                self.dump_model()
+
         else:
+            self.dump_model()
             self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=self.patience//4,min_lr=1e-3,factor=0.9)
             results = self.full_loop()
@@ -332,7 +345,7 @@ class hyperopt_training():
             print(
                 f'test_likelihood: {test_likelihood[0]} test_likelihood: {test_likelihood[1]} test_conc: {test_conc} test_ibs: {test_ibs}  test_inll: {test_inll}')
             self.debug_list.append(test_ibs)
-        if self.selection_criteria == 'train':
+        if self.selection_criteria in ['train','likelihood']:
             criteria = val_likelihood[0]  # minimize #
         elif self.selection_criteria == 'concordance':
             criteria = -conc  # maximize
@@ -378,51 +391,6 @@ class hyperopt_training():
             if self.counter>self.patience:
                 return True
 
-    # def calculate_reg_loss(self,X,x_cat,y,delta,gst):
-    #     add = 100//self.ibs_est_deltas
-    #     step_size = 1e-2*add
-    #     begin = np.random.randint(0,add)
-    #     indices = np.arange(begin,100,add)
-    #     gst = gst.to(self.device)
-    #     gt = self.dataloader.dataset.t_kmf[indices,:].t().to(self.device)
-    #     t = self.dataloader.dataset.times[indices,:].t().to(self.device)
-    #     mask_1 = (y<=t)*delta.unsqueeze(-1)
-    #     mask_2 = (y>t).float()
-    #     # mask_2 = (y>t)
-    #     grid_size = t.shape[1]
-    #     if not isinstance(x_cat, list):
-    #         x_cat_repeat = x_cat.repeat_interleave(grid_size, 0)
-    #     else:
-    #         x_cat_repeat = []
-    #     input_time = t.repeat((1,X.shape[0])).t()
-    #     X_repeat = X.repeat_interleave(grid_size, 0)
-    #     S = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)
-    #     S = S.view(-1, grid_size) #bs x gridsize
-    #     S = self.reg_func(S=S,mask_1=mask_1,mask_2=mask_2,gst=gst,gt=gt)
-    #     S = S.mean(dim=0)# mean across observations, time to integrate!
-    #     return simpsons_composite(S,step_size,100)
-
-    # def calculate_conc_reg_loss(self,X,x_cat,y,delta):
-    #     ev = delta==1
-    #     X_i = X[ev,:]
-    #     z_i = y[ev,:]
-    #     mask = (z_i<y.t())
-    #     rep_int = mask.sum(dim=1)
-    #     idx = mask.flatten()
-    #     divisor = torch.sum(idx)
-    #     n_rep = torch.sum(ev).item()
-    #     X_rep = X.repeat(n_rep,1)[idx,:]
-    #     y_rep = z_i.repeat_interleave(rep_int,0)
-    #     if not isinstance(x_cat, list):
-    #         x_cat_i = x_cat[ev,:]
-    #         x_cat_rep = x_cat.repeat(n_rep,1)[idx,:]
-    #     else:
-    #         x_cat_i = []
-    #         x_cat_rep = []
-    #     S_i = self.model.forward_S_eval(X_i,z_i,x_cat_i).repeat_interleave(rep_int,dim=0)
-    #     S_j = self.model.forward_S_eval(X_rep,y_rep,x_cat_rep)
-    #     return torch.sum(torch.ceil(torch.relu(S_j-S_i)))/divisor
-
     def training_loop(self,epoch):
         self.dataloader.dataset.set(mode='train')
         total_loss_train=0.
@@ -463,12 +431,16 @@ class hyperopt_training():
         return False
 
     def eval_loop_kkbox(self,grid_size):
+        self.model.eval()
         S_series_container = []
         S_log = []
         f_log = []
         durations = []
         events = []
-        chunks = self.dataloader.batch_size // 50 + 1
+        # self.model = self.model.eval()
+        # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
+        # events  = self.dataloader.dataset.delta.numpy()
+        chunks = self.dataloader.batch_size//50+1
         t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                 grid_size)
         time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
@@ -488,11 +460,10 @@ class hyperopt_training():
             S = S.detach()
             f = self.model(X_f, y_f,x_cat_f)
             f = f.detach()
-            S_log.append(S)
-            f_log.append(f)
             if i*self.dataloader.batch_size<50000:
+
                 if not isinstance(x_cat, list):
-                    for chk, chk_cat in zip(torch.chunk(X, chunks), torch.chunk(x_cat, chunks)):
+                    for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
                         input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
                         X_repeat = chk.repeat_interleave(grid_size, 0)
                         x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
@@ -507,23 +478,26 @@ class hyperopt_training():
                         S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
                         S_serie = S_serie.detach()
                         S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                S_log.append(S)
+                f_log.append(f)
                 durations.append(y.cpu().numpy())
                 events.append(delta.cpu().numpy())
-        durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
-        # durations = np.concatenate(durations).squeeze()
+        non_normalized_durations = np.concatenate(durations)
+        durations = self.dataloader.dataset.invert_duration(non_normalized_durations).squeeze()
+        #durations = np.concatenate(durations).squeeze()
         events = np.concatenate(events).squeeze()
-
         S_log = torch.cat(S_log)
         f_log = torch.cat(f_log)
-        # reshape(-1, 1)).squeeze()
-        S_series_container = pd.DataFrame(torch.cat(S_series_container, 1).numpy())
+        S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
+        S_series_container_2 = S_series_container.set_index(t_grid_np)
         t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
-        S_series_container = S_series_container.set_index(t_grid_np)
-        # S_series_container=S_series_container.set_index(t_grid_np)
-        val_likelihood, conc, ibs, inll = self.calc_eval_objective(S_log, f_log, S_series_container,
-                                                                   durations=durations, events=events,
-                                                                   time_grid=t_grid_np)
-        return val_likelihood.item(), conc, ibs, inll
+        S_series_container=S_series_container.set_index(t_grid_np)
+        #S_series_container=S_series_container.set_index(t_grid_np)
+        val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
+        # coxL = general_likelihood(self.model)
+        # val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
+        self.model.train()
+        return [val_likelihood.item(),val_likelihood.item()],conc,ibs,inll
 
     def eval_loop(self,grid_size):
         self.model.eval()
@@ -587,10 +561,10 @@ class hyperopt_training():
         S_series_container=S_series_container.set_index(t_grid_np)
         #S_series_container=S_series_container.set_index(t_grid_np)
         val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
-        coxL = general_likelihood(self.model)
-        val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
+        # coxL = general_likelihood(self.model)
+        # val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
         self.model.train()
-        return [val_likelihood_1.item(),val_likelihood.item()],conc,ibs,inll
+        return [val_likelihood.item(),val_likelihood.item()],conc,ibs,inll
 
     def train_score(self):
         self.dataloader.dataset.set(mode='train')
@@ -616,7 +590,6 @@ class hyperopt_training():
 
     def full_loop(self):
         self.counter = 0
-        self.best = np.inf
         self.sotl_e_list = fifo_list(n=self.T_losses)
         if self.debug:
             self.writer =SummaryWriter()
@@ -636,13 +609,19 @@ class hyperopt_training():
                                   test_likelihood,test_conc,test_ibs,test_inll)
 
     def parse_results(self, val_likelihood,val_conc,val_ibs,val_inll,
-                      test_likelihood, test_conc, test_ibs, test_inll ):
+                      test_likelihood, test_conc, test_ibs, test_inll,val_loss_cox=None):
         if self.selection_criteria == 'train':
+            if val_loss_cox is None:
+                criteria = val_likelihood[0]
+            else:
+                criteria = val_loss_cox
+            criteria_test = test_likelihood[0]
+        if self.selection_criteria == 'likelihood':
             criteria = val_likelihood[0]
             criteria_test = test_likelihood[0]
         elif self.selection_criteria == 'concordance':
             criteria = -val_conc
-            criteria_test = test_conc
+            criteria_test = -test_conc
         elif self.selection_criteria == 'ibs':
             criteria = val_ibs
             criteria_test = test_ibs
@@ -667,6 +646,8 @@ class hyperopt_training():
 
 
     def run(self):
+        if os.path.exists(self.save_path + 'hyperopt_database.p'):
+            return
         trials = Trials()
         best = fmin(fn=self,
                     space=self.hyperparameter_space,
@@ -684,10 +665,10 @@ class hyperopt_training():
         trials = pickle.load(open(self.save_path + 'hyperopt_database.p',
                          "rb"))
 
-        if self.selection_criteria == 'train':
+        if self.selection_criteria in ['train','likelihood']:
             reverse = False
         elif self.selection_criteria == 'concordance':
-            reverse = True
+            reverse = False
         elif self.selection_criteria in ['ibs','ibs_likelihood']:
             reverse = False
         elif self.selection_criteria == 'inll':
