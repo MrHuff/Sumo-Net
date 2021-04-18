@@ -264,6 +264,7 @@ class hyperopt_training():
                 self.dump_model()
 
         else:
+            self.dump_model()
             self.optimizer = torch.optim.Adam(self.model.parameters(),lr=parameters_in['lr'],weight_decay=parameters_in['weight_decay'])
             self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, 'min',patience=self.patience//4,min_lr=1e-3,factor=0.9)
             results = self.full_loop()

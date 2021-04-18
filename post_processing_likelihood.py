@@ -17,11 +17,11 @@ def get_best_params(path,selection_criteria):
 
 
 if __name__ == '__main__':
-    folder = 'likelihood_jobs_results'
+    folder = 'likelihood_jobs_3_results'
     objective = ['S_mean']
     criteria =['test_loss','test_conc','test_ibs','test_inll']
     model = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
-    c_list = [0,0,0,0,0,0]
+    c_list = [0,0,0,0,0,1]
     result_name = f'{folder}_results'
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
