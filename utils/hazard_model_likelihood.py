@@ -41,10 +41,13 @@ class ApproximateLikelihood:
 
         return None
 
-    def get_densities(self):
+    def get_densities(self,surv_df_raw=None):
 
         # Get the survival dataframe for x_observed, drop duplicate rows
-        survival_df_observed = self.model.predict_surv_df(self.x[self.mask_observed]).drop_duplicates(keep='first')
+        if surv_df_raw is None:
+            survival_df_observed = self.model.predict_surv_df(self.x[self.mask_observed]).drop_duplicates(keep='first')
+        else:
+            survival_df_observed = surv_df_raw[self.mask_observed,:].t().drop_duplicates(keep='first')
         assert survival_df_observed.index.is_monotonic
         min_index, max_index = 0, len(survival_df_observed.index.values) - 1
 
@@ -69,10 +72,13 @@ class ApproximateLikelihood:
 
         return self.densities
 
-    def get_survival(self):
+    def get_survival(self,surv_df_raw=None):
 
         # Create the survival_df and the Eval object
-        survival_df_censored = self.model.predict_surv_df(self.x[~self.mask_observed]).drop_duplicates(keep='first')
+        if surv_df_raw is None:
+            survival_df_censored = self.model.predict_surv_df(self.x[~self.mask_observed]).drop_duplicates(keep='first')
+        else:
+            survival_df_censored = surv_df_raw[~self.mask_observed,:].t().drop_duplicates(keep='first')
         eval_censored = EvalSurv(survival_df_censored, self.t[~self.mask_observed], self.d[~self.mask_observed])
 
         # Get a list of indices of the censored times
@@ -83,13 +89,12 @@ class ApproximateLikelihood:
 
         return self.survival
 
-    def get_approximated_likelihood(self):
-
+    def get_approximated_likelihood(self,input_dat,target_dat, surv_df_raw=None):
         # Get the survival probabilities and the densities
-        if self.model.__class__.__name__!= 'DeepHitSingle':
-            _ = self.model.compute_baseline_hazards(sample=self.baseline_sample_size)
-        self.get_survival()
-        self.get_densities()
+        if surv_df_raw is None and self.model.__class__.__name__!= 'DeepHitSingle':
+            _ = self.model.compute_baseline_hazards(sample=self.baseline_sample_size,input=input_dat,target=target_dat)
+        self.get_survival(surv_df_raw)
+        self.get_densities(surv_df_raw)
 
         # Compute the log-likelihood
         self.log_likelihood = np.mean(np.log(np.concatenate((self.survival, self.densities)) + 1e-7))
