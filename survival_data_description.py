@@ -1,4 +1,4 @@
-from pycox.datasets import kkbox,support,metabric,gbsg,flchain
+from pycox_local.pycox.datasets import kkbox,support,metabric,gbsg,flchain
 
 if __name__ == '__main__':
     df = kkbox.read_df()

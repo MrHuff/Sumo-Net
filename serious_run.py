@@ -1,3 +1,4 @@
+import pycox_local.pycox.datasets
 from hyperopt_class import *
 import torch
 import GPUtil
@@ -5,6 +6,11 @@ import argparse
 import warnings
 warnings.simplefilter("ignore")
 from generate_job_parameters import load_obj
+
+pycox_local.pycox.datasets.support.read_df()
+pycox_local.pycox.datasets.flchain.read_df()
+pycox_local.pycox.datasets.metabric.read_df()
+pycox_local.pycox.datasets.gbsg.read_df()
 
 def job_parser():
     parser = argparse.ArgumentParser()

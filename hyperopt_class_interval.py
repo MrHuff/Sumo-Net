@@ -5,13 +5,13 @@ import torch
 import os
 import pickle
 import numpy as np
-from pycox.evaluation import EvalSurv
+from pycox_local.pycox.evaluation import EvalSurv
 import pandas as pd
 import shutil
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from pycox.models import CoxCC,CoxPH,CoxTime
-from pycox.models.cox_time import MLPVanillaCoxTime
+from pycox_local.pycox.models import CoxCC,CoxPH,CoxTime
+from pycox_local.pycox.models.cox_time import MLPVanillaCoxTime
 import torchtuples as tt
 import time
 def square(x):

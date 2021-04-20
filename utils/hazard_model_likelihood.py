@@ -1,14 +1,12 @@
-import pycox
-import matplotlib.pyplot as plt
 import torch
 import numpy as np
-from pycox.evaluation import EvalSurv
+from pycox_local.pycox.evaluation import EvalSurv
 
 
 class ApproximateLikelihood:
     '''
     Enter a model, covariates, times and events
-    model: a pycox model
+    model: a pycox_local model
     x: 2d numpy array
     t: 1d numpy array
     d: 1d numpy array
@@ -47,7 +45,8 @@ class ApproximateLikelihood:
         if surv_df_raw is None:
             survival_df_observed = self.model.predict_surv_df(self.x[self.mask_observed]).drop_duplicates(keep='first')
         else:
-            survival_df_observed = surv_df_raw[self.mask_observed,:].t().drop_duplicates(keep='first')
+            np_bool = self.mask_observed
+            survival_df_observed = surv_df_raw[np_bool].transpose().drop_duplicates(keep='first')
         assert survival_df_observed.index.is_monotonic
         min_index, max_index = 0, len(survival_df_observed.index.values) - 1
 
@@ -78,7 +77,8 @@ class ApproximateLikelihood:
         if surv_df_raw is None:
             survival_df_censored = self.model.predict_surv_df(self.x[~self.mask_observed]).drop_duplicates(keep='first')
         else:
-            survival_df_censored = surv_df_raw[~self.mask_observed,:].t().drop_duplicates(keep='first')
+            np_bool = (~self.mask_observed)
+            survival_df_censored = surv_df_raw[np_bool].transpose().drop_duplicates(keep='first')
         eval_censored = EvalSurv(survival_df_censored, self.t[~self.mask_observed], self.d[~self.mask_observed])
 
         # Get a list of indices of the censored times

@@ -64,10 +64,10 @@ def get_likelihoods(PATH,best_tid,net_init_params,dataset_string,seed,fold_idx,h
     dataloader = get_dataloader(dataset_string,5000, seed, fold_idx,shuffle=False)
     if net_type == 'survival_net':
         model = survival_net(**net_init_params).to(device)
-        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt'))
+        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
     elif net_type == 'survival_net_basic':
         model = survival_net_basic(**net_init_params).to(device)
-        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt'))
+        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
 
     elif net_type == 'cox_time_benchmark':
         model = MLPVanillaCoxTime(in_features=net_init_params['d_in_x'],
@@ -84,17 +84,20 @@ def get_likelihoods(PATH,best_tid,net_init_params,dataset_string,seed,fold_idx,h
                                              batch_norm=False,
                                              dropout=net_init_params['dropout'],
                                              out_features=1)  # Actual net to be used
-        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt'))
+        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
         wrapper = CoxPH(model, tt.optim.Adam)
     elif net_type == 'deephit_benchmark':
         print('num_dur', num_dur)
+        y_train = (
+        dataloader.dataset.train_y.squeeze().numpy(), dataloader.dataset.train_delta.squeeze().numpy())
         labtrans = LabTransDiscreteTime(num_dur)
+        y_train = labtrans.fit_transform(y_train[0], y_train[1])
         model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                         num_nodes=net_init_params['layers'],
                                         batch_norm=False,
                                         dropout=net_init_params['dropout'],
                                         out_features=labtrans.out_features)  # Actual net to be used
-        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt'))
+        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
 
         wrapper = DeepHitSingle(model, tt.optim.Adam, alpha=0.5,
                                 sigma=0.5, duration_index=labtrans.cuts)
@@ -105,7 +108,7 @@ def get_likelihoods(PATH,best_tid,net_init_params,dataset_string,seed,fold_idx,h
                                              batch_norm=False,
                                              dropout=net_init_params['dropout'],
                                              out_features=1)  # Actual net to be used
-        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt'))
+        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
 
         wrapper = CoxCC(model, tt.optim.Adam)
     elif net_type == 'cox_linear_benchmark':
@@ -114,7 +117,7 @@ def get_likelihoods(PATH,best_tid,net_init_params,dataset_string,seed,fold_idx,h
                                              batch_norm=False,
                                              dropout=net_init_params['dropout'],
                                              out_features=1)  # Actual net to be used
-        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt'))
+        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
 
         wrapper = CoxPH(model, tt.optim.Adam)
     if net_type in ['cox_time_benchmark', 'deepsurv_benchmark', 'cox_CC_benchmark', 'cox_linear_benchmark',
@@ -128,8 +131,8 @@ def get_likelihoods(PATH,best_tid,net_init_params,dataset_string,seed,fold_idx,h
         y_train = (dataloader.dataset.train_y.squeeze().numpy(), dataloader.dataset.train_delta.squeeze().numpy())
         X_train = dataloader.dataset.train_X.numpy()
         y,delta,surv_df=sumo_loop(model,dataloader,device,100)
-        l_obj=ApproximateLikelihood(model, dataloader.dataset.test_X.numpy(), y, delta, 1000, half_width=half_width)
-        ll=l_obj.get_approximated_likelihood(input_dat=X_train,target_dat=y_train,surv_df_raw=surv_df)
+        l_obj=ApproximateLikelihood(model, dataloader.dataset.test_X.numpy(), y.numpy(), delta.numpy(), 1000, half_width=half_width)
+        ll=l_obj.get_approximated_likelihood(input_dat=X_train,target_dat=y_train,surv_df_raw=surv_df.transpose())
     return ll
 
 def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,device):
@@ -147,26 +150,26 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
     best_tid = best_trial['tid']
     dur=0
     if model=='deephit_benchmark':
-        dur=DURS[best_trial['misc']['vals']['num_dur']]
+        dur=DURS[best_trial['misc']['vals']['num_dur'][0]]
     print('best_param_for ', selection_criteria)
     output = [best_trial['result'][x] for x in ['test_conc', 'test_ibs', 'test_inll']]
-    try:
-        ll = get_likelihoods(
-            PATH=path,
-            best_tid=best_tid,
-        net_init_params=net_params,
-        dataset_string=dataset,
-        fold_idx=fold,
-        seed=seed,
-        device=device,
-        num_dur=dur,
-        half_width=half_width
-        )
-        output.insert(0, ll)
+    # try:
+    ll = get_likelihoods(
+        PATH=path,
+        best_tid=best_tid,
+    net_init_params=net_params,
+    dataset_string=dataset,
+    fold_idx=fold,
+    seed=seed,
+    device=device,
+    num_dur=dur,
+    half_width=half_width
+    )
+    output.insert(0, ll)
 
-    except Exception as e:
-        print(e)
-        output.insert(0, -999999999)
+    # except Exception as e:
+    #    print(e)
+    #    output.insert(0, -999999999)
 
     return output
 
@@ -175,8 +178,10 @@ if __name__ == '__main__':
     folder = 'likelihood_jobs_3_results'
     objective = ['S_mean']
     criteria =['test_loss','test_conc','test_ibs','test_inll']
-    model = ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
-    c_list = [0,0,0,0,0,1]
+    # model = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
+    model = ['deephit_benchmark']
+    c_list = [1]
+    # c_list = [0,0,0,0,0,1]
     result_name = f'{folder}_results'
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
@@ -196,7 +201,7 @@ if __name__ == '__main__':
                     for f_idx in [0,1,2,3,4]:
                         try:
                             pat =f'./{folder}/{d_str}_seed={s}_fold_idx={f_idx}_objective={o}_{net_type}/'
-                            vals = get_best_params(pat,criteria[c],model=model,dataset=d_str,fold=f_idx,seed=s,device=best_device,half_width=half_width)
+                            vals = get_best_params(pat,criteria[c],model=net_type,dataset=d_str,fold=f_idx,seed=s,device=best_device,half_width=half_width)
                             desc_df.append(vals)
                         except Exception as e:
                             print(e)

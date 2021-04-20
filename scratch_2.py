@@ -8,9 +8,9 @@ from sklearn_pandas import DataFrameMapper
 import torch # For building the networks
 import torchtuples as tt # Some useful functions
 
-from pycox.datasets import metabric
-from pycox.models import DeepHitSingle
-from pycox.evaluation import EvalSurv
+from pycox_local.pycox.datasets import metabric
+from pycox_local.pycox.models import DeepHitSingle
+from pycox_local.pycox.evaluation import EvalSurv
 
 
 df_train = metabric.read_df()

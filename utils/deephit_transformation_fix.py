@@ -1,7 +1,7 @@
 import warnings
 import numpy as np
 import pandas as pd
-from pycox import utils
+from pycox_local.pycox import utils
 from sklearn.preprocessing import StandardScaler
 
 

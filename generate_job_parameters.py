@@ -21,31 +21,27 @@ def generate_job_params(directory='job_dir'):
     else:
         shutil.rmtree(directory)
         os.makedirs(directory)
-    base_dict={
+    base_dict = {
         'dataset': 0,
-        'seed':1337,
-        'total_epochs':1,
-        'patience':21,
-        'hyperits':100,
-        'grid_size':100,
+        'seed': 1337,
+        'total_epochs': 100,
+        'patience': 21,
+        'hyperits': 20,
+        'grid_size': 100,
         'test_grid_size': 100,
-        'validation_interval':3,
-        'loss_type':0,
-        'net_type':'ocean_net',
+        'validation_interval': 3,
+        'loss_type': 0,
+        'net_type': 'ocean_net',
         'fold_idx': 0,
-        'savedir':f'{directory}_results',
+        'savedir': f'{directory}_results',
         'direct_dif': ['autograd'],
         'use_sotle': False,
-        'selection_criteria': 0
-
     }
     counter = 0
-    # for fold_idx in [0,1,2,3,4]:
-    for fold_idx in [0]:
-        for dataset in [0]:
+    for fold_idx in [0,1,2,3,4]:
+        for dataset in [0,1,2,3]:
             for l_type in [0]:
-                # for net_t in ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']:
-                for net_t,sel_crit in zip(['cox_time_benchmark'],[3]):
+                for net_t,sel_crit in zip(nets,validate_on):
                     base_dict['dataset']=dataset
                     base_dict['loss_type']=l_type
                     base_dict['net_type']=net_t
@@ -56,4 +52,4 @@ def generate_job_params(directory='job_dir'):
 
 if __name__ == '__main__':
         # generate_job_params(directory='testing')
-        generate_job_params(directory='cox_time_ibl')
+        generate_job_params(directory='base_run')

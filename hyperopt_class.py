@@ -5,13 +5,13 @@ import torch
 import os
 import pickle
 import numpy as np
-from pycox.evaluation import EvalSurv
+from pycox_local.pycox.evaluation import EvalSurv
 import pandas as pd
 import shutil
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
-from pycox.models import *
-from pycox.models.cox_time import MLPVanillaCoxTime
+from pycox_local.pycox.models import *
+from pycox_local.pycox.models.cox_time import MLPVanillaCoxTime
 import torchtuples as tt
 import time
 from utils.hazard_model_likelihood import HazardLikelihoodCoxTime,general_likelihood
@@ -393,51 +393,6 @@ class hyperopt_training():
             if self.counter>self.patience:
                 return True
 
-    # def calculate_reg_loss(self,X,x_cat,y,delta,gst):
-    #     add = 100//self.ibs_est_deltas
-    #     step_size = 1e-2*add
-    #     begin = np.random.randint(0,add)
-    #     indices = np.arange(begin,100,add)
-    #     gst = gst.to(self.device)
-    #     gt = self.dataloader.dataset.t_kmf[indices,:].t().to(self.device)
-    #     t = self.dataloader.dataset.times[indices,:].t().to(self.device)
-    #     mask_1 = (y<=t)*delta.unsqueeze(-1)
-    #     mask_2 = (y>t).float()
-    #     # mask_2 = (y>t)
-    #     grid_size = t.shape[1]
-    #     if not isinstance(x_cat, list):
-    #         x_cat_repeat = x_cat.repeat_interleave(grid_size, 0)
-    #     else:
-    #         x_cat_repeat = []
-    #     input_time = t.repeat((1,X.shape[0])).t()
-    #     X_repeat = X.repeat_interleave(grid_size, 0)
-    #     S = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)
-    #     S = S.view(-1, grid_size) #bs x gridsize
-    #     S = self.reg_func(S=S,mask_1=mask_1,mask_2=mask_2,gst=gst,gt=gt)
-    #     S = S.mean(dim=0)# mean across observations, time to integrate!
-    #     return simpsons_composite(S,step_size,100)
-
-    # def calculate_conc_reg_loss(self,X,x_cat,y,delta):
-    #     ev = delta==1
-    #     X_i = X[ev,:]
-    #     z_i = y[ev,:]
-    #     mask = (z_i<y.t())
-    #     rep_int = mask.sum(dim=1)
-    #     idx = mask.flatten()
-    #     divisor = torch.sum(idx)
-    #     n_rep = torch.sum(ev).item()
-    #     X_rep = X.repeat(n_rep,1)[idx,:]
-    #     y_rep = z_i.repeat_interleave(rep_int,0)
-    #     if not isinstance(x_cat, list):
-    #         x_cat_i = x_cat[ev,:]
-    #         x_cat_rep = x_cat.repeat(n_rep,1)[idx,:]
-    #     else:
-    #         x_cat_i = []
-    #         x_cat_rep = []
-    #     S_i = self.model.forward_S_eval(X_i,z_i,x_cat_i).repeat_interleave(rep_int,dim=0)
-    #     S_j = self.model.forward_S_eval(X_rep,y_rep,x_cat_rep)
-    #     return torch.sum(torch.ceil(torch.relu(S_j-S_i)))/divisor
-
     def training_loop(self,epoch):
         self.dataloader.dataset.set(mode='train')
         total_loss_train=0.
@@ -662,7 +617,7 @@ class hyperopt_training():
             criteria_test = test_likelihood[0]
         elif self.selection_criteria == 'concordance':
             criteria = -val_conc
-            criteria_test = test_conc
+            criteria_test = -test_conc
         elif self.selection_criteria == 'ibs':
             criteria = val_ibs
             criteria_test = test_ibs
