@@ -2,7 +2,7 @@ from collections import defaultdict
 import requests
 import h5py
 import pandas as pd
-from pycox.datasets._dataset_loader import _DatasetLoader
+from pycox_local.pycox.datasets._dataset_loader import _DatasetLoader
 
 
 class _DatasetDeepSurv(_DatasetLoader):

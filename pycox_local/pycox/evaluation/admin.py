@@ -1,7 +1,7 @@
 import numpy as np
 import scipy
 import numba
-from pycox.utils import idx_at_times
+from pycox_local.pycox.utils import idx_at_times
 
 
 def administrative_scores(func):

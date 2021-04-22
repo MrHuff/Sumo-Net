@@ -1,7 +1,7 @@
 import numpy as np
 import scipy
 import numba
-from pycox import utils
+from pycox_local.pycox import utils
 
 @numba.njit(parallel=True)
 def _inv_cens_scores(func, time_grid, durations, events, surv, censor_surv, idx_ts_surv, idx_ts_censor,

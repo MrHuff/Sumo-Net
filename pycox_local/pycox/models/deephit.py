@@ -3,8 +3,8 @@ import pandas as pd
 import torch
 import torchtuples as tt
 
-from pycox import models
-from pycox.models.utils import pad_col
+from pycox_local.pycox import models
+from pycox_local.pycox.models.utils import pad_col
 
 class DeepHitSingle(models.pmf.PMFBase):
     """The DeepHit methods by [1] but only for single event (not competing risks).

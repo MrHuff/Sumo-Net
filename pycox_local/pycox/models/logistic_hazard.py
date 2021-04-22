@@ -3,10 +3,10 @@ import numpy as np
 import pandas as pd
 import torch
 import torchtuples as tt
-from pycox import models
-from pycox.models.utils import pad_col, make_subgrid
-from pycox.preprocessing import label_transforms
-from pycox.models.interpolation import InterpolateLogisticHazard
+from pycox_local.pycox import models
+from pycox_local.pycox.models.utils import pad_col, make_subgrid
+from pycox_local.pycox.preprocessing import label_transforms
+from pycox_local.pycox.models.interpolation import InterpolateLogisticHazard
 
 class LogisticHazard(models.base.SurvBase):
     """

@@ -2,7 +2,7 @@ import warnings
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from pycox.datasets._dataset_loader import _DatasetLoader, _PATH_DATA
+from pycox_local.pycox.datasets._dataset_loader import _DatasetLoader, _PATH_DATA
 
 class _DatasetKKBoxChurn(_DatasetLoader):
     """KKBox churn data set obtained from Kaggle (WSDM - KKBox's Churn Prediction Challenge 2017).

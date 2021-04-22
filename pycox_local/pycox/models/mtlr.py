@@ -1,7 +1,7 @@
 
-from pycox import models
+from pycox_local.pycox import models
 import torchtuples as tt
-from pycox.models import utils
+from pycox_local.pycox.models import utils
 
 class MTLR(models.pmf.PMFBase):
     """

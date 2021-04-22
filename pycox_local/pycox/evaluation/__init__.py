@@ -1,5 +1,5 @@
 
-from pycox.evaluation.eval_surv import EvalSurv
+from pycox_local.pycox.evaluation.eval_surv import EvalSurv
 # from pycox_local.evaluation import binomial_log_likelihood, brier_score,\
 #     integrated_binomial_log_likelihood, integrated_brier_score
 # from pycox_local.evaluation.concordance import concordance_td
