@@ -11,7 +11,7 @@ pycox_local.pycox.datasets.support.read_df()
 pycox_local.pycox.datasets.flchain.read_df()
 pycox_local.pycox.datasets.metabric.read_df()
 pycox_local.pycox.datasets.gbsg.read_df()
-
+pycox_local.pycox.datasets.kkbox.read_df()
 def job_parser():
     parser = argparse.ArgumentParser()
     parser.add_argument('--job_path', type=str, nargs='?', default='', help='which dataset to run')
@@ -99,8 +99,8 @@ if __name__ == '__main__':
         hyper_param_space['num_dur'] = [50, 100, 200, 400]
 
 
-    devices = GPUtil.getAvailable(order='memory', limit=1)
-    device = devices[0]
+    # devices = GPUtil.getAvailable(order='memory', limit=1)
+    device = 0
     job_params = {
         'd_out': 1,
         'dataset_string': datasets[args['dataset']],

@@ -82,8 +82,8 @@ class hyperopt_training():
         self.save_path = f'{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
-        else:
-            shutil.rmtree(self.save_path)
+        # else:
+        #     shutil.rmtree(self.save_path)
             os.makedirs(self.save_path)
         self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','T_losses']
         self.deephit_params= ['alpha','sigma','num_dur']
@@ -261,6 +261,7 @@ class hyperopt_training():
                                         val_loss_cox=val_loss)
             if results['test_loss']<self.best:
                 self.best = results['test_loss']
+                print(self.best)
                 self.dump_model()
 
         else:
@@ -433,12 +434,16 @@ class hyperopt_training():
         return False
 
     def eval_loop_kkbox(self,grid_size):
+        self.model.eval()
         S_series_container = []
         S_log = []
         f_log = []
         durations = []
         events = []
-        chunks = self.dataloader.batch_size // 50 + 1
+        # self.model = self.model.eval()
+        # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
+        # events  = self.dataloader.dataset.delta.numpy()
+        chunks = self.dataloader.batch_size//50+1
         t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                 grid_size)
         time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
@@ -458,11 +463,10 @@ class hyperopt_training():
             S = S.detach()
             f = self.model(X_f, y_f,x_cat_f)
             f = f.detach()
-            S_log.append(S)
-            f_log.append(f)
             if i*self.dataloader.batch_size<50000:
+
                 if not isinstance(x_cat, list):
-                    for chk, chk_cat in zip(torch.chunk(X, chunks), torch.chunk(x_cat, chunks)):
+                    for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
                         input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
                         X_repeat = chk.repeat_interleave(grid_size, 0)
                         x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
@@ -477,23 +481,26 @@ class hyperopt_training():
                         S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
                         S_serie = S_serie.detach()
                         S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                S_log.append(S)
+                f_log.append(f)
                 durations.append(y.cpu().numpy())
                 events.append(delta.cpu().numpy())
-        durations = self.dataloader.dataset.invert_duration(np.concatenate(durations)).squeeze()
-        # durations = np.concatenate(durations).squeeze()
+        non_normalized_durations = np.concatenate(durations)
+        durations = self.dataloader.dataset.invert_duration(non_normalized_durations).squeeze()
+        #durations = np.concatenate(durations).squeeze()
         events = np.concatenate(events).squeeze()
-
         S_log = torch.cat(S_log)
         f_log = torch.cat(f_log)
-        # reshape(-1, 1)).squeeze()
-        S_series_container = pd.DataFrame(torch.cat(S_series_container, 1).numpy())
+        S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
+        S_series_container_2 = S_series_container.set_index(t_grid_np)
         t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
-        S_series_container = S_series_container.set_index(t_grid_np)
-        # S_series_container=S_series_container.set_index(t_grid_np)
-        val_likelihood, conc, ibs, inll = self.calc_eval_objective(S_log, f_log, S_series_container,
-                                                                   durations=durations, events=events,
-                                                                   time_grid=t_grid_np)
-        return val_likelihood.item(), conc, ibs, inll
+        S_series_container=S_series_container.set_index(t_grid_np)
+        #S_series_container=S_series_container.set_index(t_grid_np)
+        val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
+        coxL = general_likelihood(self.model)
+        val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
+        self.model.train()
+        return [val_likelihood_1.item(),val_likelihood.item()],conc,ibs,inll
 
     def eval_loop(self,grid_size):
         self.model.eval()
@@ -642,6 +649,8 @@ class hyperopt_training():
 
 
     def run(self):
+        if os.path.exists(self.save_path + 'hyperopt_database.p'):
+            return
         trials = Trials()
         best = fmin(fn=self,
                     space=self.hyperparameter_space,
@@ -662,7 +671,7 @@ class hyperopt_training():
         if self.selection_criteria in ['train','likelihood']:
             reverse = False
         elif self.selection_criteria == 'concordance':
-            reverse = True
+            reverse = False
         elif self.selection_criteria in ['ibs','ibs_likelihood']:
             reverse = False
         elif self.selection_criteria == 'inll':

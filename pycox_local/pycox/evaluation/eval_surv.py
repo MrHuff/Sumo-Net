@@ -2,9 +2,9 @@
 import warnings
 import numpy as np
 import pandas as pd
-from pycox.evaluation.concordance import concordance_td
-from pycox.evaluation import ipcw, admin
-from pycox import utils
+from pycox_local.pycox.evaluation.concordance import concordance_td
+from pycox_local.pycox.evaluation import ipcw, admin
+from pycox_local.pycox import utils
 
 
 class EvalSurv:

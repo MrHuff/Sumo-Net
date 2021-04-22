@@ -8,7 +8,7 @@ import numpy as np
 import pandas as pd
 import torchtuples as tt
 
-from pycox.simulations import base
+from pycox_local.pycox.simulations import base
 
 _TIMES = np.linspace(0, 100, 1001)
 

@@ -2,7 +2,7 @@ from typing import Tuple
 import torch
 from torch import Tensor
 import torch.nn.functional as F
-from pycox.models import utils
+from pycox_local.pycox.models import utils
 from torchtuples import TupleTree
 
 

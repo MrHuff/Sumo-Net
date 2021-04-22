@@ -1,5 +1,5 @@
 import pandas as pd
-from pycox.datasets._dataset_loader import _DatasetLoader
+from pycox_local.pycox.datasets._dataset_loader import _DatasetLoader
 
 def download_from_rdatasets(package, name):
     datasets = (pd.read_csv("https://raw.githubusercontent.com/vincentarelbundock/Rdatasets/master/datasets.csv")

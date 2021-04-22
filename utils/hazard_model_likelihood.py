@@ -55,8 +55,8 @@ class ApproximateLikelihood:
 
         # Get the indices of the survival_df
         indices = eval_observed.idx_at_times(self.t[self.mask_observed])
-        left_index = np.minimum(np.maximum(indices - self.half_width + 1, min_index), max_index - 1)
-        right_index = np.minimum(indices + self.half_width, max_index)
+        left_index = np.minimum(np.maximum(indices - self.half_width + 1, min_index), max_index - 1).squeeze()
+        right_index = np.minimum(indices + self.half_width, max_index).squeeze()
 
         # Get the survival probabilities and times
         left_survival = np.array([survival_df_observed.iloc[left_index[i], i] for i in range(len(left_index))])
@@ -77,12 +77,12 @@ class ApproximateLikelihood:
         if surv_df_raw is None:
             survival_df_censored = self.model.predict_surv_df(self.x[~self.mask_observed]).drop_duplicates(keep='first')
         else:
-            np_bool = (~self.mask_observed)
+            np_bool = ~self.mask_observed
             survival_df_censored = surv_df_raw[np_bool].transpose().drop_duplicates(keep='first')
         eval_censored = EvalSurv(survival_df_censored, self.t[~self.mask_observed], self.d[~self.mask_observed])
 
         # Get a list of indices of the censored times
-        indices = eval_censored.idx_at_times(self.t[~self.mask_observed])
+        indices = eval_censored.idx_at_times(self.t[~self.mask_observed]).squeeze()
 
         # Select the survival probabilities
         self.survival = np.array([survival_df_censored.iloc[indices[i], i] for i in range(len(indices))])

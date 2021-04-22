@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 import torchtuples as tt
-from pycox import models
+from pycox_local.pycox import models
 
 def search_sorted_idx(array, values):
     '''For sorted array, get index of values.

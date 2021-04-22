@@ -3,9 +3,9 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 import torchtuples as tt
-from pycox import models
-from pycox.models.utils import pad_col, make_subgrid
-from pycox.preprocessing import label_transforms
+from pycox_local.pycox import models
+from pycox_local.pycox.models.utils import pad_col, make_subgrid
+from pycox_local.pycox.preprocessing import label_transforms
 
 class PCHazard(models.base.SurvBase):
     """The PC-Hazard (piecewise constant hazard) method from [1].

@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 
-from pycox.simulations import base
+from pycox_local.pycox.simulations import base
 
 
 class _SimStudyRelativeRisk(base._SimBase):

@@ -42,7 +42,7 @@ if __name__ == '__main__':
         'num_dur': [20],
 
     }
-    for i in [1]:
+    for i in [4]:
         devices = GPUtil.getAvailable(order='memory', limit=8)
         print(devices)
         print(torch.cuda.device_count())
@@ -51,7 +51,7 @@ if __name__ == '__main__':
             'd_out': 1,
             'dataset_string': datasets[i],
             'seed': 1337,#,np.random.randint(0,9999),
-            'total_epochs': 1,
+            'total_epochs': 100,
             'device': device,
             'patience': 100,
             'hyperits': 5,
@@ -59,9 +59,9 @@ if __name__ == '__main__':
             'grid_size':100,
             'test_grid_size':100,
             'validation_interval':2,
-            'net_type':'survival_net_basic',
+            # 'net_type':'survival_net_basic',
             # 'net_type':'cox_time_benchmark',
-            # 'net_type':'deephit_benchmark',
+            'net_type':'deephit_benchmark',
             # 'net_type':'cox_linear_benchmark',
             # 'net_type':'deepsurv_benchmark',
             'objective': 'S_mean',

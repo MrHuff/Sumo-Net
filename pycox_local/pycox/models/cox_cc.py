@@ -1,6 +1,6 @@
 import numpy as np
 import torchtuples as tt
-from pycox import models
+from pycox_local.pycox import models
 
 
 class _CoxCCBase(models.cox._CoxBase):

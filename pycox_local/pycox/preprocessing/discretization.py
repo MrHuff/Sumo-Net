@@ -1,7 +1,7 @@
 import warnings
 import numpy as np
 import pandas as pd
-from pycox import utils
+from pycox_local.pycox import utils
 
 
 def make_cuts(n_cuts, scheme, durations, events, min_=0., dtype='float64'):
