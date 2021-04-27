@@ -82,7 +82,10 @@ class hyperopt_training():
         self.save_path = f'{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
+<<<<<<< HEAD
 
+=======
+>>>>>>> da99f47... fix
         self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','T_losses']
         self.deephit_params= ['alpha','sigma','num_dur']
         self.get_hyperparameterspace(hyper_param_space)
@@ -499,7 +502,10 @@ class hyperopt_training():
         # val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
         self.model.train()
         return [val_likelihood.item(),val_likelihood.item()],conc,ibs,inll
+<<<<<<< HEAD
 
+=======
+>>>>>>> da99f47... fix
 
     def eval_loop(self,grid_size):
         self.model.eval()
