@@ -82,9 +82,7 @@ class hyperopt_training():
         self.save_path = f'{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
-        # else:
-        #     shutil.rmtree(self.save_path)
-            os.makedirs(self.save_path)
+
         self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','T_losses']
         self.deephit_params= ['alpha','sigma','num_dur']
         self.get_hyperparameterspace(hyper_param_space)
@@ -225,21 +223,21 @@ class hyperopt_training():
             with torch.no_grad():
                 val_likelihood_list = [1e99,1e99]
                 test_likelihood_list = [1e99,1e99]
-                class_list = []
-                general_class = general_likelihood(self.wrapper)
-                class_list.append(general_class)
-                if self.net_type!='deephit_benchmark':
-                    hazard_class = HazardLikelihoodCoxTime(self.wrapper)
-                    class_list.append(hazard_class)
-                for i,coxL in enumerate(class_list):
-                    val_likelihood = coxL.estimate_likelihood(torch.from_numpy(val_data[0]),
-                                                              torch.from_numpy(val_data[1][0]),
-                                                              torch.from_numpy(val_data[1][1]))
-                    test_likelihood = coxL.estimate_likelihood(torch.from_numpy(test_data[0]),
-                                                              torch.from_numpy(test_data[1][0]),
-                                                              torch.from_numpy(test_data[1][1]))
-                    val_likelihood_list[i]=val_likelihood.item()
-                    test_likelihood_list[i]=test_likelihood.item()
+                # class_list = []
+                # general_class = general_likelihood(self.wrapper)
+                # class_list.append(general_class)
+                # if self.net_type!='deephit_benchmark':
+                #     hazard_class = HazardLikelihoodCoxTime(self.wrapper)
+                #     class_list.append(hazard_class)
+                # for i,coxL in enumerate(class_list):
+                #     val_likelihood = coxL.estimate_likelihood(torch.from_numpy(val_data[0]),
+                #                                               torch.from_numpy(val_data[1][0]),
+                #                                               torch.from_numpy(val_data[1][1]))
+                #     test_likelihood = coxL.estimate_likelihood(torch.from_numpy(test_data[0]),
+                #                                               torch.from_numpy(test_data[1][0]),
+                #                                               torch.from_numpy(test_data[1][1]))
+                #     val_likelihood_list[i]=val_likelihood.item()
+                #     test_likelihood_list[i]=test_likelihood.item()
 
             if self.net_type in ['deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark']:
                 val_loss = self.wrapper.partial_log_likelihood(*val_data).mean()
@@ -497,10 +495,11 @@ class hyperopt_training():
         S_series_container=S_series_container.set_index(t_grid_np)
         #S_series_container=S_series_container.set_index(t_grid_np)
         val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
-        coxL = general_likelihood(self.model)
-        val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
+
+        # coxL = general_likelihood(self.model)
+        # val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
         self.model.train()
-        return [val_likelihood_1.item(),val_likelihood.item()],conc,ibs,inll
+        return [val_likelihood.item(),val_likelihood.item()],conc,ibs,inll
 
     def eval_loop(self,grid_size):
         self.model.eval()
@@ -564,10 +563,10 @@ class hyperopt_training():
         S_series_container=S_series_container.set_index(t_grid_np)
         #S_series_container=S_series_container.set_index(t_grid_np)
         val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
-        coxL = general_likelihood(self.model)
-        val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
+        # coxL = general_likelihood(self.model)
+        # val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
         self.model.train()
-        return [val_likelihood_1.item(),val_likelihood.item()],conc,ibs,inll
+        return [val_likelihood.item(),val_likelihood.item()],conc,ibs,inll
 
     def train_score(self):
         self.dataloader.dataset.set(mode='train')
