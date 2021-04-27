@@ -32,13 +32,13 @@ if __name__ == '__main__':
 
 
     fold = 'kkbox_run'
-
     idx = 1
     jobs = os.listdir(fold)
     jobs.sort()
     args = load_obj(jobs[idx],folder=f'{fold}/')
+    print(args)
     if  args['net_type'] in ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']:
-        dataset_bs = [[64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024], [1000],
+        dataset_bs = [[64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024], [1000,2500,5000],
                       [64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024]]
         dataset_d_x = [[1],[1],[1],[1],[1],[1],[1],[1]]
         dataset_d = [[1, 2,4], [1, 2,4], [1, 2,4], [1, 2,4], [1, 2], [1, 2, 4], [1, 2, 4], [1, 2, 4]]
@@ -47,7 +47,7 @@ if __name__ == '__main__':
                        [8, 16, 32, 64]]
         dataset_d_t = [[1],[1],[1],[1],[1],[1],[1],[1]]
     else:
-        dataset_bs = [[25, 50, 100, 250], [5, 10, 25, 50, 100], [5, 10, 25, 50, 100], [5, 10, 25, 50, 100], [1000],
+        dataset_bs = [[25, 50, 100, 250], [5, 10, 25, 50, 100], [5, 10, 25, 50, 100], [5, 10, 25, 50, 100], [1000,2500,5000],
                       [64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024], [64, 128, 256, 512, 1024]]
         dataset_d_x = [[1, 2], [1, 2], [1, 2], [1, 2], [4, 6, 8], [1, 2], [1, 2], [1, 2]]
         dataset_d = [[1, 2], [1, 2], [1, 2], [1, 2], [1, 2], [1, 2, 4], [1, 2, 4], [1, 2, 4]]
@@ -86,9 +86,8 @@ if __name__ == '__main__':
         hyper_param_space['num_dur'] = [50, 100, 200, 400]
 
 
-    # devices = GPUtil.getAvailable(order='memory', limit=1)
-    args['total_epochs']=1
-    device = 0
+    devices = GPUtil.getAvailable(order='memory', limit=1)
+    device = devices[0]
     job_params = {
         'd_out': 1,
         'dataset_string': datasets[args['dataset']],
@@ -106,8 +105,8 @@ if __name__ == '__main__':
         'fold_idx': args['fold_idx'],
         'savedir':args['savedir'],
         'use_sotle': False
-
     }
+
     training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
     training_obj.run()
     training_obj.post_process()
