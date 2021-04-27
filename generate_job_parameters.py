@@ -25,7 +25,7 @@ def generate_job_params(directory='job_dir'):
     base_dict = {
         'dataset': 0,
         'seed': 1337,
-        'total_epochs': 100,
+        'total_epochs': 25,
         'patience': 21,
         'hyperits': 10,
         'grid_size': 100,
