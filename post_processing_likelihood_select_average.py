@@ -156,7 +156,7 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
     if model=='deephit_benchmark':
         dur=DURS[best_trial['misc']['vals']['num_dur'][0]]
     print('best_param_for ', selection_criteria)
-    output = [-best_trial['result'][x] for x in ['test_loglikelihood_2','test_conc', 'test_ibs', 'test_inll']]
+    output = [best_trial['result'][x] for x in ['test_loglikelihood_2','test_conc', 'test_ibs', 'test_inll']]
     if model!='survival_net_basic':
         ll = get_likelihoods(
             PATH=path,
@@ -229,7 +229,7 @@ if __name__ == '__main__':
 
         final_ = pd.pivot(piv_df,index='Method',columns='dataset')
         print(final_)
-        print(final_.to_latex(buf=f"{result_name}.tex",escape=False))
+        print(final_.to_latex(buf=f"{result_name}_half_width={half_width}.tex",escape=False))
         final_.to_csv(f"{result_name}_half_width={half_width}.csv")
 
 
