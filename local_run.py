@@ -110,3 +110,4 @@ if __name__ == '__main__':
     training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
     training_obj.run()
     training_obj.post_process()
+
