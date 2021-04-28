@@ -44,7 +44,7 @@ class IdentityTransformer(BaseEstimator, TransformerMixin): #Scaling is already 
         return self
 
     def transform(self, input_array, y=None):
-        return input_array * 1
+        return input_array
 
     def inverse_transform(self,input_array):
         return input_array
@@ -55,13 +55,13 @@ pd.set_option('display.width', 1000)
 
 
 class surival_dataset(Dataset):
-    def __init__(self,str_identifier,seed=1337,fold_idx=0):
+    def __init__(self,str_identifier,seed=1337,fold_idx=0,sumo_net=True):
         print('fold_idx: ', fold_idx)
         super(surival_dataset, self).__init__()
         if str_identifier=='support':
             data = support
             cont_cols = ['x0','x3','x7','x8','x9','x10','x11','x12','x13']
-            binary_cols = ['x1','x4','x5']
+            binary_cols = ['x1','x4','x5    ']
             cat_cols = ['x2','x6']
 
         elif str_identifier=='metabric':
@@ -115,12 +115,15 @@ class surival_dataset(Dataset):
         c = OrderedCategoricalLong()
         for el in cat_cols:
             df_full[el] = c.fit_transform(df_full[el])
-        standardize = [([col], MinMaxScaler()) for col in cont_cols]
+        if sumo_net:
+            standardize = [([col], MinMaxScaler()) for col in cont_cols]
+            self.duration_mapper = MinMaxScaler()
+        else:
+            standardize = [([col], StandardScaler()) for col in cont_cols]
+            self.duration_mapper = IdentityTransformer()
         leave = [(col,None) for col in binary_cols]
         self.cat_cols = cat_cols
         self.x_mapper = DataFrameMapper(standardize+leave)
-        self.duration_mapper = MinMaxScaler()
-
         if self.cat_cols:
             self.unique_cat_cols = df_full[cat_cols].max(axis=0).tolist()
             self.unique_cat_cols = [el+1 for el in self.unique_cat_cols]
@@ -267,7 +270,7 @@ class custom_dataloader():
         self.len = self.n // self.batch_size + 1
         return self.len
 
-def get_dataloader(str_identifier,bs,seed,fold_idx,shuffle=True):
-    d = surival_dataset(str_identifier,seed,fold_idx=fold_idx)
+def get_dataloader(str_identifier,bs,seed,fold_idx,shuffle=True,sumo_net=False):
+    d = surival_dataset(str_identifier,seed,fold_idx=fold_idx,sumo_net=sumo_net)
     dat = custom_dataloader(dataset=d,batch_size=bs,shuffle=shuffle)
     return dat

@@ -61,7 +61,8 @@ def sumo_loop(model,dataloader,device='cuda:0',grid_size=100):
 
 
 def get_likelihoods(PATH,best_tid,net_init_params,dataset_string,seed,fold_idx,half_width,device='cuda:0',num_dur=0):
-    dataloader = get_dataloader(dataset_string,5000, seed, fold_idx,shuffle=False)
+    sumo_net = net_type == 'survival_net_basic'
+    dataloader = get_dataloader(dataset_string,5000, seed, fold_idx,shuffle=False,sumo_net=sumo_net)
     if net_type == 'survival_net':
         model = survival_net(**net_init_params).to(device)
         model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
@@ -174,13 +175,13 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
 
 
 if __name__ == '__main__':
-    folder = '300_run_results'
+    folder = '300_runs_fix_results'
     objective = ['S_mean']
     criteria =['test_loss','test_conc','test_ibs','test_inll']
     # model = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
     # c_list = [0,0,0,0,0,1]
-    model = ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
-    c_list = [0,0,0,0,1]
+    model = ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark']
+    c_list = [0,0,0,0]
     result_name = f'{folder}_results'
     cols = ['objective','model','dataset']
     for criteria_name in criteria:

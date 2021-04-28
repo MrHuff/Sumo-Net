@@ -11,10 +11,9 @@ import shutil
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 from pycox_local.pycox.models import *
-from pycox_local.pycox.models.cox_time import MLPVanillaCoxTime
+from pycox_local.pycox.models.cox_time import MLPVanillaCoxTime,MixedInputMLPCoxTime
 import torchtuples as tt
 import time
-from utils.hazard_model_likelihood import HazardLikelihoodCoxTime,general_likelihood
 from utils.deephit_transformation_fix import *
 def square(x):
     return x**2
@@ -117,7 +116,8 @@ class hyperopt_training():
     def __call__(self,parameters_in):
         print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
         print(parameters_in)
-        self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx)
+        sumo_net = self.net_type=='survival_net_basic'
+        self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx,sumo_net=sumo_net)
         self.cycle_length = self.dataloader.__len__()//self.validation_interval+1
         print('cycle_length',self.cycle_length)
         self.T_losses = parameters_in['T_losses']
@@ -136,6 +136,7 @@ class hyperopt_training():
             'dropout':parameters_in['dropout'],
             'eps':parameters_in['eps']
         }
+        cat_cols_nr = len(self.dataloader.dataset.unique_cat_cols)
         self.train_objective = get_objective(self.objective)
         if self.net_type=='survival_net':
             self.model = survival_net(**net_init_params).to(self.device)
@@ -144,70 +145,144 @@ class hyperopt_training():
         elif self.net_type=='ocean_net':
             self.model = ocean_net(**net_init_params).to(self.device)
         elif self.net_type=='cox_time_benchmark':
-            self.model = MLPVanillaCoxTime(in_features=net_init_params['d_in_x'],
-                                    num_nodes=net_init_params['layers'],
-                                    batch_norm=False,
-                                    dropout=net_init_params['dropout'],
-                                   ) #Actual net to be used
+            if cat_cols_nr==0:
+                self.model = MLPVanillaCoxTime(in_features=net_init_params['d_in_x'],
+                                                  num_nodes=net_init_params['layers'],
+                                                  batch_norm=False,
+                                                  dropout=net_init_params['dropout'],
+                                                  )  # Actual net to be used
+
+            else:
+                self.model = MixedInputMLPCoxTime(in_features=net_init_params['d_in_x'],
+                                        num_nodes=net_init_params['layers'],
+                                        batch_norm=False,
+                                        dropout=net_init_params['dropout'],
+                                                  num_embeddings=self.dataloader.dataset.unique_cat_cols,
+                                                  embedding_dims=[el // 2 + 1 for el in
+                                                                  self.dataloader.dataset.unique_cat_cols]
+                                       ) #Actual net to be used
             self.wrapper = CoxTime(self.model,tt.optim.Adam)
 
         elif self.net_type=='deepsurv_benchmark':
-            self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+            if cat_cols_nr ==0:
+                self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                     num_nodes=net_init_params['layers'],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
                                     out_features=1) #Actual net to be used
+            else:
+                self.model = tt.practical.MixedInputMLP(
+                    in_features=net_init_params['d_in_x'],
+                    num_nodes=net_init_params['layers'],
+                    batch_norm=False,
+                    dropout=net_init_params['dropout'],
+                    out_features=1,
+                    num_embeddings=self.dataloader.dataset.unique_cat_cols,
+                    embedding_dims=[el // 2 + 1 for el in
+                                    self.dataloader.dataset.unique_cat_cols]
+                )
             self.wrapper = CoxPH(self.model,tt.optim.Adam)
+
         elif self.net_type=='deephit_benchmark':
             print('num_dur', parameters_in['num_dur'])
-            # labtrans = DeepHitSingle.label_transform(parameters_in['num_dur'])
             labtrans = LabTransDiscreteTime(parameters_in['num_dur'])
 
         elif self.net_type=='cox_CC_benchmark':
-            self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+            if cat_cols_nr ==0:
+                self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                     num_nodes=net_init_params['layers'],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
-                                   out_features=1) #Actual net to be used
+                                    out_features=1) #Actual net to be used
+            else:
+                self.model = tt.practical.MixedInputMLP(
+                    in_features=net_init_params['d_in_x'],
+                    num_nodes=net_init_params['layers'],
+                    batch_norm=False,
+                    dropout=net_init_params['dropout'],
+                    out_features=1,
+                    num_embeddings=self.dataloader.dataset.unique_cat_cols,
+                    embedding_dims=[el // 2 + 1 for el in
+                                    self.dataloader.dataset.unique_cat_cols]
+                )
             self.wrapper = CoxCC(self.model,tt.optim.Adam)
+
         elif self.net_type=='cox_linear_benchmark':
-            self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+            if cat_cols_nr ==0:
+                self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
                                     num_nodes=[],
                                     batch_norm=False,
                                     dropout=net_init_params['dropout'],
                                     out_features=1) #Actual net to be used
+            else:
+                self.model = tt.practical.MixedInputMLP(
+                    in_features=net_init_params['d_in_x'],
+                    num_nodes=[],
+                    batch_norm=False,
+                    dropout=net_init_params['dropout'],
+                    out_features=1,
+                    num_embeddings=self.dataloader.dataset.unique_cat_cols,
+                    embedding_dims=[el // 2 + 1 for el in
+                                    self.dataloader.dataset.unique_cat_cols]
+                )
             self.wrapper = CoxPH(self.model,tt.optim.Adam)
 
         if self.net_type in ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']:
             y_train = (self.dataloader.dataset.train_y.squeeze().numpy(),self.dataloader.dataset.train_delta.squeeze().numpy())
             y_val = (self.dataloader.dataset.val_y.squeeze().numpy(),self.dataloader.dataset.val_delta.squeeze().numpy())
-            y_test = (self.dataloader.dataset.test_y.squeeze().numpy(),self.dataloader.dataset.test_delta.squeeze().numpy())
             if self.net_type=='deephit_benchmark':
                 val_data_eval = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
                 y_train = labtrans.fit_transform(y_train[0],y_train[1])
                 val_dur,val_event,bool_fixer_minus_1 = labtrans.transform(y_val[0],y_val[1])
                 y_val = (val_dur,val_event)
-                #Need to unfuck -1 markers...
-                self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
-                                                     num_nodes=net_init_params['layers'],
-                                                     batch_norm=False,
-                                                     dropout=net_init_params['dropout'],
-                                                    out_features=labtrans.out_features)  # Actual net to be used
+
+                if cat_cols_nr==0:
+                    self.model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                                         num_nodes=net_init_params['layers'],
+                                                         batch_norm=False,
+                                                         dropout=net_init_params['dropout'],
+                                                         out_features=labtrans.out_features)  # Actual net to be used
+                    x_val = self.dataloader.dataset.val_X.numpy()[bool_fixer_minus_1]
+                    x_test = self.dataloader.dataset.test_X.numpy()
+
+                    val_data = tt.tuplefy(x_val, y_val)
+                else:
+                    self.model = tt.practical.MixedInputMLP(in_features=net_init_params['d_in_x'],
+                                                         num_nodes=net_init_params['layers'],
+                                                         batch_norm=False,
+                                                         dropout=net_init_params['dropout'],
+                                                         out_features=labtrans.out_features,
+                                                            num_embeddings=self.dataloader.dataset.unique_cat_cols,
+                                                            embedding_dims=[el // 2 + 1 for el in
+                                                                            self.dataloader.dataset.unique_cat_cols]
+                                                            )  # Actual net to be used
+                    X_tmp,X_cat_tmp = self.dataloader.dataset.val_X.numpy()[bool_fixer_minus_1],self.dataloader.dataset.val_cat_X.numpy()[bool_fixer_minus_1]
+                    x_val = tt.tuplefy(X_tmp,X_cat_tmp)
+                    x_test = tt.tuplefy((self.dataloader.dataset.test_X.numpy(),self.dataloader.dataset.test_cat_X.numpy()))
+                    val_data = tt.tuplefy(x_val, y_val)
+
+
                 self.wrapper = DeepHitSingle(self.model, tt.optim.Adam, alpha=parameters_in['alpha'],
-                                             sigma=parameters_in['sigma'],duration_index=labtrans.cuts)
-                X_tmp = self.dataloader.dataset.val_X.numpy()[bool_fixer_minus_1]
-                val_data = tt.tuplefy(X_tmp, y_val)
-
+                                             sigma=parameters_in['sigma'], duration_index=labtrans.cuts)
             else:
-                val_data = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
-            test_data = tt.tuplefy(self.dataloader.dataset.test_X.numpy(), y_test)
-
+                if cat_cols_nr==0:
+                    val_data = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
+                    x_val =self.dataloader.dataset.val_X.numpy()
+                    x_test = self.dataloader.dataset.test_X.numpy()
+                else:
+                    x_val =tt.tuplefy((self.dataloader.dataset.val_X.numpy(),self.dataloader.dataset.val_cat_X.numpy()))
+                    x_test = tt.tuplefy((self.dataloader.dataset.test_X.numpy(),self.dataloader.dataset.test_cat_X.numpy()))
+                    val_data = tt.tuplefy(x_val, y_val)
+            if cat_cols_nr == 0:
+                X_in = self.dataloader.dataset.train_X.numpy()
+            else:
+                X_in = tt.tuplefy((self.dataloader.dataset.train_X.numpy(),self.dataloader.dataset.train_cat_X.numpy()))
             verbose = True
             self.wrapper.optimizer.set_lr(parameters_in['lr'])
             callbacks = [tt.callbacks.EarlyStopping()]
             print(self.model)
-            log = self.wrapper.fit(input=self.dataloader.dataset.train_X.numpy(),
-                              target=y_train, epochs=self.total_epochs,callbacks= callbacks, verbose=verbose,
+            log = self.wrapper.fit(input=X_in,
+                              target=y_train, epochs=self.total_epochs,callbacks= callbacks, verbose=verbose,batch_size=parameters_in['bs'],
                             val_data=val_data)
 
             if self.net_type!='deephit_benchmark':
@@ -216,35 +291,14 @@ class hyperopt_training():
                 val_data = val_data_eval
             val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()
             val_conc, val_ibs, val_inll =self.benchmark_eval(y=val_durations,events=self.dataloader.dataset.val_delta.float().squeeze().numpy(),
-                                                             wrapper=self.wrapper,X=self.dataloader.dataset.val_X.numpy())
+                                                             wrapper=self.wrapper,X=x_val)
             test_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.test_y.numpy()).squeeze()
             test_conc, test_ibs, test_inll =self.benchmark_eval(y=test_durations,events=self.dataloader.dataset.test_delta.float().squeeze().numpy(),
-                                                                wrapper=self.wrapper,X=self.dataloader.dataset.test_X.numpy())
-            with torch.no_grad():
-                val_likelihood_list = [1e99,1e99]
-                test_likelihood_list = [1e99,1e99]
-                # class_list = []
-                # general_class = general_likelihood(self.wrapper)
-                # class_list.append(general_class)
-                # if self.net_type!='deephit_benchmark':
-                #     hazard_class = HazardLikelihoodCoxTime(self.wrapper)
-                #     class_list.append(hazard_class)
-                # for i,coxL in enumerate(class_list):
-                #     val_likelihood = coxL.estimate_likelihood(torch.from_numpy(val_data[0]),
-                #                                               torch.from_numpy(val_data[1][0]),
-                #                                               torch.from_numpy(val_data[1][1]))
-                #     test_likelihood = coxL.estimate_likelihood(torch.from_numpy(test_data[0]),
-                #                                               torch.from_numpy(test_data[1][0]),
-                #                                               torch.from_numpy(test_data[1][1]))
-                #     val_likelihood_list[i]=val_likelihood.item()
-                #     test_likelihood_list[i]=test_likelihood.item()
-
-            if self.net_type in ['deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark']:
-                val_loss = self.wrapper.partial_log_likelihood(*val_data).mean()
-            elif self.net_type in ['cox_time_benchmark']:
-
+                                                                wrapper=self.wrapper,X=x_test)
+            val_likelihood_list = [1e99,1e99]
+            test_likelihood_list = [1e99,1e99]
+            if self.net_type !='deephit_benchmark':
                 val_loss = callbacks[0].cur_best
-
             else:
                 val_loss = None
             results = self.parse_results(
@@ -615,9 +669,10 @@ class hyperopt_training():
         if self.selection_criteria == 'train':
             if val_loss_cox is None:
                 criteria = val_likelihood[0]
+                criteria_test = test_likelihood[0]
             else:
                 criteria = val_loss_cox
-            criteria_test = test_likelihood[0]
+                criteria_test = val_loss_cox
         if self.selection_criteria == 'likelihood':
             criteria = val_likelihood[0]
             criteria_test = test_likelihood[0]
