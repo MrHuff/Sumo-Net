@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from pycox_local.pycox.evaluation import EvalSurv
-
+import torchtuples as tt
 
 class ApproximateLikelihood:
     '''
@@ -14,8 +14,8 @@ class ApproximateLikelihood:
     half_width: k >=1 and densities are evaluated using T_{i-k+1} and T_{i+k}
     '''
 
-    def __init__(self, model, x, t, d, baseline_sample_size, half_width):
-
+    def __init__(self, model, x, t, d, baseline_sample_size, half_width,dataset):
+        self.ds=dataset
         self.model = model
         self.t = t
         self.d = d
@@ -34,7 +34,10 @@ class ApproximateLikelihood:
         outlier_mask = (self.t > max_time) or (self.t < min_time)
         self.t = self.t[~outlier_mask]
         self.d = self.d[~outlier_mask]
-        self.x = self.x[~outlier_mask]
+        if isinstance(self.x, tuple):
+            self.x = tt.tuplefy((self.x[0][~outlier_mask],self.x[1][~outlier_mask]))
+        else:
+            self.x = self.x[~outlier_mask]
         self.n = len(self.t)
 
         return None
@@ -43,24 +46,37 @@ class ApproximateLikelihood:
 
         # Get the survival dataframe for x_observed, drop duplicate rows
         if surv_df_raw is None:
-            survival_df_observed = self.model.predict_surv_df(self.x[self.mask_observed]).drop_duplicates(keep='first')
+            if isinstance(self.x,tuple):
+                input= tt.tuplefy((self.x[0][self.mask_observed], self.x[1][self.mask_observed]))
+            else:
+                input = self.x[self.mask_observed]
+            survival_df_observed = self.model.predict_surv_df(input).drop_duplicates(keep='first')
         else:
             np_bool = self.mask_observed
             survival_df_observed = surv_df_raw[np_bool].transpose().drop_duplicates(keep='first')
+
         assert survival_df_observed.index.is_monotonic
         min_index, max_index = 0, len(survival_df_observed.index.values) - 1
 
         # Create an Eval object
         eval_observed = EvalSurv(survival_df_observed, self.t[self.mask_observed], self.d[self.mask_observed])
-
         # Get the indices of the survival_df
         indices = eval_observed.idx_at_times(self.t[self.mask_observed])
+
         left_index = np.minimum(np.maximum(indices - self.half_width + 1, min_index), max_index - 1).squeeze()
         right_index = np.minimum(indices + self.half_width, max_index).squeeze()
 
         # Get the survival probabilities and times
         left_survival = np.array([survival_df_observed.iloc[left_index[i], i] for i in range(len(left_index))])
         right_survival = np.array([survival_df_observed.iloc[right_index[i], i] for i in range(len(right_index))])
+
+        #Rescaling procedure should occur here:
+
+        old_time_scale = np.array(survival_df_observed.index)
+        original_scale = self.ds.duration_mapper.inverse_transform(old_time_scale.reshape(-1, 1))
+        zero_one_scale = self.ds.duration_mapper_2.transform(original_scale.reshape(-1, 1))
+        survival_df_observed.index = zero_one_scale.squeeze()
+
         left_time = np.array(survival_df_observed.index[left_index])
         right_time = np.array(survival_df_observed.index[right_index])
 
@@ -75,7 +91,11 @@ class ApproximateLikelihood:
 
         # Create the survival_df and the Eval object
         if surv_df_raw is None:
-            survival_df_censored = self.model.predict_surv_df(self.x[~self.mask_observed]).drop_duplicates(keep='first')
+            if isinstance(self.x,tuple):
+                input= tt.tuplefy((self.x[0][~self.mask_observed], self.x[1][~self.mask_observed]))
+            else:
+                input = self.x[~self.mask_observed]
+            survival_df_censored = self.model.predict_surv_df(input).drop_duplicates(keep='first')
         else:
             np_bool = ~self.mask_observed
             survival_df_censored = surv_df_raw[np_bool].transpose().drop_duplicates(keep='first')

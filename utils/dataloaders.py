@@ -61,7 +61,7 @@ class surival_dataset(Dataset):
         if str_identifier=='support':
             data = support
             cont_cols = ['x0','x3','x7','x8','x9','x10','x11','x12','x13']
-            binary_cols = ['x1','x4','x5    ']
+            binary_cols = ['x1','x4','x5']
             cat_cols = ['x2','x6']
 
         elif str_identifier=='metabric':
@@ -120,7 +120,8 @@ class surival_dataset(Dataset):
             self.duration_mapper = MinMaxScaler()
         else:
             standardize = [([col], StandardScaler()) for col in cont_cols]
-            self.duration_mapper = IdentityTransformer()
+            self.duration_mapper = StandardScaler()
+        self.duration_mapper_2 = MinMaxScaler()
         leave = [(col,None) for col in binary_cols]
         self.cat_cols = cat_cols
         self.x_mapper = DataFrameMapper(standardize+leave)
@@ -147,6 +148,10 @@ class surival_dataset(Dataset):
         y_train = self.duration_mapper.fit_transform(df_train[self.duration_col].values.reshape(-1,1)).astype('float32')
         y_val = self.duration_mapper.transform(df_val[self.duration_col].values.reshape(-1,1)).astype('float32')
         y_test = self.duration_mapper.transform(df_test[self.duration_col].values.reshape(-1,1)).astype('float32')
+
+        self.y_train_ref = self.duration_mapper_2.fit_transform(df_train[self.duration_col].values.reshape(-1,1)).astype('float32')
+        self.y_val_ref = self.duration_mapper_2.transform(df_val[self.duration_col].values.reshape(-1,1)).astype('float32')
+        self.y_test_ref = self.duration_mapper_2.transform(df_test[self.duration_col].values.reshape(-1,1)).astype('float32')
 
 
         self.split(X=x_train,delta=df_train[self.event_col],y=y_train,mode='train',cat=cat_cols,df=df_train)

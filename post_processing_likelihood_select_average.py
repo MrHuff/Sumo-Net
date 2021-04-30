@@ -61,78 +61,140 @@ def sumo_loop(model,dataloader,device='cuda:0',grid_size=100):
 
 
 def get_likelihoods(PATH,best_tid,net_init_params,dataset_string,seed,fold_idx,half_width,device='cuda:0',num_dur=0):
-    sumo_net = net_type == 'survival_net_basic'
+    sumo_net = net_type in ['survival_net_basic', 'deepsurv_benchmark', 'cox_CC_benchmark', 'cox_linear_benchmark',
+                         'deephit_benchmark']
     dataloader = get_dataloader(dataset_string,5000, seed, fold_idx,shuffle=False,sumo_net=sumo_net)
-    if net_type == 'survival_net':
-        model = survival_net(**net_init_params).to(device)
-        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
-    elif net_type == 'survival_net_basic':
+    cat_cols_nr = len(dataloader.dataset.unique_cat_cols)
+
+    if net_type == 'survival_net_basic':
         model = survival_net_basic(**net_init_params).to(device)
         model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
 
     elif net_type == 'cox_time_benchmark':
-        model = MLPVanillaCoxTime(in_features=net_init_params['d_in_x'],
-                                       num_nodes=net_init_params['layers'],
-                                       batch_norm=False,
-                                       dropout=net_init_params['dropout'],
-                                       )  # Actual net to be used
+        if cat_cols_nr == 0:
+            model = MLPVanillaCoxTime(in_features=net_init_params['d_in_x'],
+                                           num_nodes=net_init_params['layers'],
+                                           batch_norm=False,
+                                           dropout=net_init_params['dropout'],
+                                           )  # Actual net to be used
+
+        else:
+            model = MixedInputMLPCoxTime(in_features=net_init_params['d_in_x'],
+                                              num_nodes=net_init_params['layers'],
+                                              batch_norm=False,
+                                              dropout=net_init_params['dropout'],
+                                              num_embeddings=dataloader.dataset.unique_cat_cols,
+                                              embedding_dims=[el // 2 + 1 for el in
+                                                              dataloader.dataset.unique_cat_cols]
+                                              )  # Actual net to be used
         model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
         wrapper = CoxTime(model, tt.optim.Adam)
 
     elif net_type == 'deepsurv_benchmark':
-        model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
-                                             num_nodes=net_init_params['layers'],
-                                             batch_norm=False,
-                                             dropout=net_init_params['dropout'],
-                                             out_features=1)  # Actual net to be used
+        if cat_cols_nr == 0:
+            model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                                 num_nodes=net_init_params['layers'],
+                                                 batch_norm=False,
+                                                 dropout=net_init_params['dropout'],
+                                                 out_features=1)  # Actual net to be used
+        else:
+            model = tt.practical.MixedInputMLP(
+                in_features=net_init_params['d_in_x'],
+                num_nodes=net_init_params['layers'],
+                batch_norm=False,
+                dropout=net_init_params['dropout'],
+                out_features=1,
+                num_embeddings=dataloader.dataset.unique_cat_cols,
+                embedding_dims=[el // 2 + 1 for el in
+                                dataloader.dataset.unique_cat_cols]
+            )
         model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
         wrapper = CoxPH(model, tt.optim.Adam)
+
     elif net_type == 'deephit_benchmark':
-        print('num_dur', num_dur)
-        y_train = (
-        dataloader.dataset.train_y.squeeze().numpy(), dataloader.dataset.train_delta.squeeze().numpy())
         labtrans = LabTransDiscreteTime(num_dur)
-        y_train = labtrans.fit_transform(y_train[0], y_train[1])
-        model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
-                                        num_nodes=net_init_params['layers'],
-                                        batch_norm=False,
-                                        dropout=net_init_params['dropout'],
-                                        out_features=labtrans.out_features)  # Actual net to be used
+        # y_input = dataloader.dataset.duration_mapper.inverse_transform(dataloader.dataset.train_y.squeeze().numpy().reshape(-1,1))
+        y_train = (dataloader.dataset.train_y.squeeze().numpy(), dataloader.dataset.train_delta.squeeze().numpy())
+        labtrans.fit(y_train[0], y_train[1])
+        if cat_cols_nr == 0:
+            model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                                 num_nodes=net_init_params['layers'],
+                                                 batch_norm=False,
+                                                 dropout=net_init_params['dropout'],
+                                                 out_features=labtrans.out_features)  # Actual net to be used
+        else:
+            model = tt.practical.MixedInputMLP(in_features=net_init_params['d_in_x'],
+                                                    num_nodes=net_init_params['layers'],
+                                                    batch_norm=False,
+                                                    dropout=net_init_params['dropout'],
+                                                    out_features=labtrans.out_features,
+                                                    num_embeddings=dataloader.dataset.unique_cat_cols,
+                                                    embedding_dims=[el // 2 + 1 for el in
+                                                                    dataloader.dataset.unique_cat_cols]
+                                                )  # Actual net to be used
         model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
-
         wrapper = DeepHitSingle(model, tt.optim.Adam, alpha=0.5,
-                                sigma=0.5, duration_index=labtrans.cuts)
-
+                                     sigma=0.5, duration_index=labtrans.cuts)
     elif net_type == 'cox_CC_benchmark':
-        model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
-                                             num_nodes=net_init_params['layers'],
-                                             batch_norm=False,
-                                             dropout=net_init_params['dropout'],
-                                             out_features=1)  # Actual net to be used
-        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
-
+        if cat_cols_nr == 0:
+            model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                                 num_nodes=net_init_params['layers'],
+                                                 batch_norm=False,
+                                                 dropout=net_init_params['dropout'],
+                                                 out_features=1)  # Actual net to be used
+        else:
+            model = tt.practical.MixedInputMLP(
+                in_features=net_init_params['d_in_x'],
+                num_nodes=net_init_params['layers'],
+                batch_norm=False,
+                dropout=net_init_params['dropout'],
+                out_features=1,
+                num_embeddings=dataloader.dataset.unique_cat_cols,
+                embedding_dims=[el // 2 + 1 for el in
+                                dataloader.dataset.unique_cat_cols]
+            )
+        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt', map_location=device))
         wrapper = CoxCC(model, tt.optim.Adam)
-    elif net_type == 'cox_linear_benchmark':
-        model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
-                                             num_nodes=[],
-                                             batch_norm=False,
-                                             dropout=net_init_params['dropout'],
-                                             out_features=1)  # Actual net to be used
-        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt',map_location=device))
 
+    elif net_type == 'cox_linear_benchmark':
+        if cat_cols_nr == 0:
+            model = tt.practical.MLPVanilla(in_features=net_init_params['d_in_x'],
+                                                 num_nodes=[],
+                                                 batch_norm=False,
+                                                 dropout=net_init_params['dropout'],
+                                                 out_features=1)  # Actual net to be used
+        else:
+            model = tt.practical.MixedInputMLP(
+                in_features=net_init_params['d_in_x'],
+                num_nodes=[],
+                batch_norm=False,
+                dropout=net_init_params['dropout'],
+                out_features=1,
+                num_embeddings=dataloader.dataset.unique_cat_cols,
+                embedding_dims=[el // 2 + 1 for el in
+                                dataloader.dataset.unique_cat_cols]
+            )
+        model.load_state_dict(torch.load(PATH + f'best_model_{best_tid}.pt', map_location=device))
         wrapper = CoxPH(model, tt.optim.Adam)
+
     if net_type in ['cox_time_benchmark', 'deepsurv_benchmark', 'cox_CC_benchmark', 'cox_linear_benchmark',
                          'deephit_benchmark']:
         y_train = (dataloader.dataset.train_y.squeeze().numpy(), dataloader.dataset.train_delta.squeeze().numpy())
-        X_train = dataloader.dataset.train_X.numpy()
-        X, y, delta = dataloader.dataset.test_X.numpy(), dataloader.dataset.test_y.squeeze().numpy(), dataloader.dataset.test_delta.squeeze().numpy()
-        l_obj=ApproximateLikelihood(wrapper,X,y,delta,1000,half_width=half_width)
+        if cat_cols_nr==0:
+            X_train = dataloader.dataset.train_X.numpy()
+            X, y, delta = dataloader.dataset.test_X.numpy(), dataloader.dataset.test_y.squeeze().numpy(), dataloader.dataset.test_delta.squeeze().numpy()
+
+        else:
+            X_train = tt.tuplefy((dataloader.dataset.train_X.numpy(),dataloader.dataset.train_cat_X.numpy()))
+            X, y, delta = tt.tuplefy((dataloader.dataset.test_X.numpy(),dataloader.dataset.test_cat_X.numpy())), dataloader.dataset.test_y.squeeze().numpy(), dataloader.dataset.test_delta.squeeze().numpy()
+
+        l_obj=ApproximateLikelihood(wrapper,X,y,delta,1000,half_width=half_width,dataset=dataloader.dataset)
         ll = l_obj.get_approximated_likelihood(input_dat=X_train,target_dat=y_train)
     else:
         y_train = (dataloader.dataset.train_y.squeeze().numpy(), dataloader.dataset.train_delta.squeeze().numpy())
         X_train = dataloader.dataset.train_X.numpy()
         y,delta,surv_df=sumo_loop(model,dataloader,device,100)
-        l_obj=ApproximateLikelihood(model, dataloader.dataset.test_X.numpy(), y.numpy(), delta.numpy(), 1000, half_width=half_width)
+        l_obj=ApproximateLikelihood(model, dataloader.dataset.test_X.numpy(), y.numpy(), delta.numpy(), 1000, half_width=half_width,dataset=dataloader.dataset)
         ll=l_obj.get_approximated_likelihood(input_dat=X_train,target_dat=y_train,surv_df_raw=surv_df.transpose())
     return ll
 
@@ -175,13 +237,14 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
 
 
 if __name__ == '__main__':
-    folder = '300_runs_fix_results'
+    folder = '300_exact_replication_results'
     objective = ['S_mean']
     criteria =['test_loss','test_conc','test_ibs','test_inll']
     # model = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
     # c_list = [0,0,0,0,0,1]
-    model = ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark']
-    c_list = [0,0,0,0]
+    model = ['deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
+    c_list = [0,0,0,1]
+
     result_name = f'{folder}_results'
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
