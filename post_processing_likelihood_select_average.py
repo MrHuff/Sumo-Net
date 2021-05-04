@@ -210,7 +210,7 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
     if model=='survival_net_basic':
         selection_criteria='test_loglikelihood_2'
         reverse = False
-
+    selection_criteria='test_loglikelihood'
     trials = pickle.load(open(path+'hyperopt_database.p', "rb"))
     best_trial = sorted(trials.trials, key=lambda x: x['result'][selection_criteria], reverse=reverse)[0]
     net_params = best_trial['result']['net_init_params']
@@ -237,12 +237,12 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
 
 
 if __name__ == '__main__':
-    folder = 'cox_time_big_2_results'
+    folder = 'ibs_eval'
     objective = ['S_mean']
     criteria =['test_loss','test_conc','test_ibs','test_inll']
     # model = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
     # c_list = [0,0,0,0,0,1]
-    model = ['cox_time_benchmark']
+    model = ['survival_net_basic']
     c_list = [0]
     result_name = f'{folder}_results'
     cols = ['objective','model','dataset']

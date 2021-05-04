@@ -10,12 +10,10 @@ def load_obj(name,folder):
     with open(f'{folder}' + name, 'rb') as f:
         return pickle.load(f)
 
-
-
 # nets = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
 # validate_on = [0,0,0,0,0,1]
-nets = ['survival_net_basic']
-validate_on = [0]
+nets = ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
+validate_on = [0,0,0,0,1]
 def generate_job_params(directory='job_dir'):
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -26,14 +24,16 @@ def generate_job_params(directory='job_dir'):
         'dataset': 0,
         'seed': 1337,
         # 'total_epochs': 100,
-        'total_epochs': 50,
-        'patience': 21,
+        'total_epochs': 25,
+        # 'patience': 21,
+        'patience': 20,
         # 'hyperits': 300,
-        'hyperits': 10,
+        'hyperits': 20,
 
         'grid_size': 100,
         'test_grid_size': 100,
-        'validation_interval': 3,
+        # 'validation_interval': 3,
+        'validation_interval': 4,
         'loss_type': 0,
         'net_type': 'ocean_net',
         'fold_idx': 0,
@@ -57,4 +57,4 @@ def generate_job_params(directory='job_dir'):
 
 if __name__ == '__main__':
         # generate_job_params(directory='testing')
-        generate_job_params(directory='kkbox_sumo_net_bug_fix')
+        generate_job_params(directory='kkbox_20_hyperopt')
