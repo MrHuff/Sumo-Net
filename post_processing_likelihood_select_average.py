@@ -237,20 +237,19 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
 
 
 if __name__ == '__main__':
-    folder = '300_exact_replication_results'
+    folder = 'cox_time_big_2_results'
     objective = ['S_mean']
     criteria =['test_loss','test_conc','test_ibs','test_inll']
     # model = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
     # c_list = [0,0,0,0,0,1]
-    model = ['deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
-    c_list = [0,0,0,1]
-
+    model = ['cox_time_benchmark']
+    c_list = [0]
     result_name = f'{folder}_results'
     cols = ['objective','model','dataset']
     for criteria_name in criteria:
         cols.append(criteria_name+'_mean')
         cols.append(criteria_name+'_std')
-    dataset_indices = [0,1,2,3]
+    dataset_indices = [4]
     half_width = 1
     best_device = f'cuda:{GPUtil.getFirstAvailable()[0]}'
     for half_width in [1,2,4,8]:
