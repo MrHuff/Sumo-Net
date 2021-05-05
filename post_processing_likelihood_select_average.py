@@ -199,7 +199,7 @@ def get_likelihoods(PATH,best_tid,net_init_params,dataset_string,seed,fold_idx,h
     return ll
 
 def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,device):
-    if selection_criteria in ['test_loglikelihood_1','test_loglikelihood_2','test_loss']:
+    if selection_criteria in ['test_loglikelihood','test_loglikelihood_1','test_loglikelihood_2','test_loss']:
         reverse = False
     elif selection_criteria == 'test_conc':
         reverse = True
@@ -207,10 +207,6 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
         reverse = False
     elif selection_criteria == 'test_inll':
         reverse = False
-    if model=='survival_net_basic':
-        selection_criteria='test_loglikelihood_2'
-        reverse = False
-    selection_criteria='test_loglikelihood'
     trials = pickle.load(open(path+'hyperopt_database.p', "rb"))
     best_trial = sorted(trials.trials, key=lambda x: x['result'][selection_criteria], reverse=reverse)[0]
     net_params = best_trial['result']['net_init_params']
@@ -219,7 +215,7 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
     if model=='deephit_benchmark':
         dur=DURS[best_trial['misc']['vals']['num_dur'][0]]
     print('best_param_for ', selection_criteria)
-    output = [best_trial['result'][x] for x in ['test_loglikelihood_2','test_conc', 'test_ibs', 'test_inll']]
+    output = [best_trial['result'][x] for x in [selection_criteria,'test_conc', 'test_ibs', 'test_inll']]
     if model!='survival_net_basic':
         ll = get_likelihoods(
             PATH=path,
@@ -239,7 +235,7 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
 if __name__ == '__main__':
     folder = 'ibs_eval'
     objective = ['S_mean']
-    criteria =['test_loss','test_conc','test_ibs','test_inll']
+    criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
     # model = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
     # c_list = [0,0,0,0,0,1]
     model = ['survival_net_basic']
@@ -287,8 +283,8 @@ if __name__ == '__main__':
         piv_df['dataset'] = all_jobs['dataset'].apply(lambda x: x.upper())
         for crit,new_crit in zip(criteria,['likelihood',r'$C^\text{td}$','IBS','IBLL']):
             mean_col = crit+'_mean'
-            # std_col = crit+'_std'
-            piv_df[new_crit] = '$'+ all_jobs[mean_col].astype(str)+'$'#'\pm '+ all_jobs[std_col].astype(str)+'$'
+            std_col = crit+'_std'
+            piv_df[new_crit] = '$'+ all_jobs[mean_col].astype(str)+'\pm'+ all_jobs[std_col].astype(str)+'$'
 
         final_ = pd.pivot(piv_df,index='Method',columns='dataset')
         print(final_)

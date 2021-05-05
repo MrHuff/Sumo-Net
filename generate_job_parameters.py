@@ -12,8 +12,8 @@ def load_obj(name,folder):
 
 # nets = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
 # validate_on = [0,0,0,0,0,1]
-nets = ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
-validate_on = [0,0,0,0,1]
+nets = ['deephit_benchmark']
+validate_on = [1]
 def generate_job_params(directory='job_dir'):
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -57,4 +57,4 @@ def generate_job_params(directory='job_dir'):
 
 if __name__ == '__main__':
         # generate_job_params(directory='testing')
-        generate_job_params(directory='kkbox_20_hyperopt')
+        generate_job_params(directory='kkbox_deephit_20')

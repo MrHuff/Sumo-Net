@@ -232,7 +232,7 @@ class hyperopt_training():
             y_val = (self.dataloader.dataset.val_y.squeeze().numpy(),self.dataloader.dataset.val_delta.squeeze().numpy())
             if self.net_type=='deephit_benchmark':
                 val_data_eval = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
-                y_train = labtrans.fit_transform(y_train[0],y_train[1])
+                y_train,bool_fix_train = labtrans.fit_transform(y_train[0],y_train[1])
                 val_dur,val_event,bool_fixer_minus_1 = labtrans.transform(y_val[0],y_val[1])
                 y_val = (val_dur,val_event)
 
@@ -244,8 +244,9 @@ class hyperopt_training():
                                                          out_features=labtrans.out_features)  # Actual net to be used
                     x_val = self.dataloader.dataset.val_X.numpy()[bool_fixer_minus_1]
                     x_test = self.dataloader.dataset.test_X.numpy()
-
                     val_data = tt.tuplefy(x_val, y_val)
+                    X_in = self.dataloader.dataset.train_X.numpy()[bool_fix_train]
+
                 else:
                     self.model = tt.practical.MixedInputMLP(in_features=net_init_params['d_in_x'],
                                                          num_nodes=net_init_params['layers'],
@@ -257,10 +258,12 @@ class hyperopt_training():
                                                                             self.dataloader.dataset.unique_cat_cols]
                                                             )  # Actual net to be used
                     X_tmp,X_cat_tmp = self.dataloader.dataset.val_X.numpy()[bool_fixer_minus_1],self.dataloader.dataset.val_cat_X.numpy()[bool_fixer_minus_1]
+                    # X_tmp,X_cat_tmp = self.dataloader.dataset.val_X.numpy()[bool_fixer_minus_1],self.dataloader.dataset.val_cat_X.numpy()[bool_fixer_minus_1]
                     x_val = tt.tuplefy(X_tmp,X_cat_tmp)
                     x_test = tt.tuplefy((self.dataloader.dataset.test_X.numpy(),self.dataloader.dataset.test_cat_X.numpy()))
                     val_data = tt.tuplefy(x_val, y_val)
-
+                    X_in = tt.tuplefy(
+                        (self.dataloader.dataset.train_X.numpy()[bool_fix_train], self.dataloader.dataset.train_cat_X.numpy()[bool_fix_train]))
 
                 self.wrapper = DeepHitSingle(self.model, tt.optim.Adam, alpha=parameters_in['alpha'],
                                              sigma=parameters_in['sigma'], duration_index=labtrans.cuts)
@@ -269,14 +272,15 @@ class hyperopt_training():
                     val_data = tt.tuplefy(self.dataloader.dataset.val_X.numpy(), y_val)
                     x_val =self.dataloader.dataset.val_X.numpy()
                     x_test = self.dataloader.dataset.test_X.numpy()
+                    X_in = self.dataloader.dataset.train_X.numpy()
+
                 else:
                     x_val =tt.tuplefy((self.dataloader.dataset.val_X.numpy(),self.dataloader.dataset.val_cat_X.numpy()))
                     x_test = tt.tuplefy((self.dataloader.dataset.test_X.numpy(),self.dataloader.dataset.test_cat_X.numpy()))
                     val_data = tt.tuplefy(x_val, y_val)
-            if cat_cols_nr == 0:
-                X_in = self.dataloader.dataset.train_X.numpy()
-            else:
-                X_in = tt.tuplefy((self.dataloader.dataset.train_X.numpy(),self.dataloader.dataset.train_cat_X.numpy()))
+                    X_in = tt.tuplefy(
+                        (self.dataloader.dataset.train_X.numpy(), self.dataloader.dataset.train_cat_X.numpy()))
+
             verbose = True
             self.wrapper.optimizer.set_lr(parameters_in['lr'])
             callbacks = [tt.callbacks.EarlyStopping()]

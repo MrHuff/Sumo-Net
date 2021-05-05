@@ -254,8 +254,8 @@ class LabTransDiscreteTime:
 
     def fit_transform(self, durations, events):
         self.fit(durations, events)
-        idx_durations, events,_ = self.transform(durations, events)
-        return idx_durations, events
+        idx_durations, events,bool_fix = self.transform(durations, events)
+        return (idx_durations, events),bool_fix
 
     def transform(self, durations, events):
         durations = _values_if_series(durations)
