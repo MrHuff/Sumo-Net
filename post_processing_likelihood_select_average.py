@@ -198,7 +198,7 @@ def get_likelihoods(PATH,best_tid,net_init_params,dataset_string,seed,fold_idx,h
         ll=l_obj.get_approximated_likelihood(input_dat=X_train,target_dat=y_train,surv_df_raw=surv_df.transpose())
     return ll
 
-def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,device):
+def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,device,CRIT):
     if selection_criteria in ['test_loglikelihood','test_loglikelihood_1','test_loglikelihood_2','test_loss']:
         reverse = False
     elif selection_criteria == 'test_conc':
@@ -215,81 +215,87 @@ def get_best_params(path,selection_criteria,model,dataset,fold,seed,half_width,d
     if model=='deephit_benchmark':
         dur=DURS[best_trial['misc']['vals']['num_dur'][0]]
     print('best_param_for ', selection_criteria)
-    output = [best_trial['result'][x] for x in [selection_criteria,'test_conc', 'test_ibs', 'test_inll']]
-    if model!='survival_net_basic':
-        ll = get_likelihoods(
-            PATH=path,
-            best_tid=best_tid,
-        net_init_params=net_params,
-        dataset_string=dataset,
-        fold_idx=fold,
-        seed=seed,
-        device=device,
-        num_dur=dur,
-        half_width=half_width
-        )
-        output[0]=ll
+    output = [-best_trial['result'][x] if x in ['test_loss','test_inll'] else best_trial['result'][x] for x in CRIT]
+
+    if 'test_loss' in CRIT:
+        if model!='survival_net_basic':
+            ll = get_likelihoods(
+                PATH=path,
+                best_tid=best_tid,
+            net_init_params=net_params,
+            dataset_string=dataset,
+            fold_idx=fold,
+            seed=seed,
+            device=device,
+            num_dur=dur,
+            half_width=half_width
+            )
+            output[0]=ll
     return output
 
 
 if __name__ == '__main__':
-    folder = 'ibs_eval'
+    folder = 'kkbox_sumo_30_3_results'
     objective = ['S_mean']
-    criteria =['test_loglikelihood','test_conc','test_ibs','test_inll']
-    # model = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
-    # c_list = [0,0,0,0,0,1]
+    criteria =['test_loss','test_conc','test_ibs','test_inll']
+    # model = ['deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark','cox_time_benchmark','survival_net_basic']
+    # selection_criteria_list = ['test_loss','test_loss','test_loss','test_conc','test_loss','test_loss']
     model = ['survival_net_basic']
-    c_list = [0]
-    result_name = f'{folder}_results'
-    cols = ['objective','model','dataset']
-    for criteria_name in criteria:
-        cols.append(criteria_name+'_mean')
-        cols.append(criteria_name+'_std')
-    dataset_indices = [4]
-    half_width = 1
-    best_device = f'cuda:{GPUtil.getFirstAvailable()[0]}'
-    for half_width in [1,2,4,8]:
-        df = []
-        for o in objective:
-            for net_type,c in zip(model,c_list):
-                for d in dataset_indices:
-                    d_str = datasets[d]
-                    row = [o,net_type,d_str]
-                    desc_df = []
-                    for s in [1337]:
-                        for f_idx in [0,1,2,3,4]:
-                            try:
-                                pat =f'./{folder}/{d_str}_seed={s}_fold_idx={f_idx}_objective={o}_{net_type}/'
-                                vals = get_best_params(pat,criteria[c],model=net_type,dataset=d_str,fold=f_idx,seed=s,device=best_device,half_width=half_width)
-                                desc_df.append(vals)
-                            except Exception as e:
-                                print(e)
-                    tmp = pd.DataFrame(desc_df,columns =criteria)
-                    tmp = tmp.describe()
-                    means = tmp.iloc[1,:].values.tolist()
-                    stds = tmp.iloc[2,:].values.tolist()
-                    desc_df = []
-                    for i in range(len(criteria)):
-                        if i==3:
-                            desc_df.append(-round(means[i],3))
-                        else:
-                            desc_df.append(round(means[i],3))
-                        desc_df.append(round(stds[i],3))
-                    row = row + desc_df
-                    df.append(row)
-        all_jobs = pd.DataFrame(df,columns=cols)
-        piv_df  = pd.DataFrame()
-        piv_df['Method'] = all_jobs['objective'].apply(lambda x: x.replace('_','-')) +': '+ all_jobs['model'].apply(lambda x: x.replace('_','-'))
-        piv_df['dataset'] = all_jobs['dataset'].apply(lambda x: x.upper())
-        for crit,new_crit in zip(criteria,['likelihood',r'$C^\text{td}$','IBS','IBLL']):
-            mean_col = crit+'_mean'
-            std_col = crit+'_std'
-            piv_df[new_crit] = '$'+ all_jobs[mean_col].astype(str)+'\pm'+ all_jobs[std_col].astype(str)+'$'
+    selection_criteria_list = ['test_loglikelihood_2']
 
-        final_ = pd.pivot(piv_df,index='Method',columns='dataset')
-        print(final_)
-        print(final_.to_latex(buf=f"{result_name}_half_width={half_width}.tex",escape=False))
-        final_.to_csv(f"{result_name}_half_width={half_width}.csv")
+    result_name = f'{folder}_results'
+    # for index_indicator,(criteria,criteria_labels) in enumerate(zip([['test_loss','test_inll'],['test_conc','test_ibs']],[['likelihood', 'IBLL'],[r'$C^\text{td}$', 'IBS',]])):
+    for index_indicator,(criteria,criteria_labels) in enumerate(zip([['test_loss'],['test_inll'],['test_conc'],['test_ibs']],[['likelihood'], ['IBLL'],[r'$C^\text{td}$'], ['IBS',]])):
+        cols = ['objective', 'model', 'dataset']
+        for criteria_name in criteria:
+            cols.append(criteria_name+'_mean')
+            cols.append(criteria_name+'_std')
+        # dataset_indices = [0,1,2,3,4]
+        dataset_indices = [4]
+        if criteria_labels[0]=='likelihood':
+            half_width_list = [1, 2, 4, 8]
+        else:
+            half_width_list = [0]
+        best_device = f'cuda:{GPUtil.getFirstAvailable()[0]}'
+        for half_width in half_width_list:
+            df = []
+            for net_type,selection_criteria in zip(model,selection_criteria_list):
+                for o in objective:
+                    for d in dataset_indices:
+                        d_str = datasets[d]
+                        row = [o,net_type,d_str]
+                        desc_df = []
+                        for s in [1337]:
+                            for f_idx in [0,1,2,3,4]:
+                                try:
+                                    pat =f'./{folder}/{d_str}_seed={s}_fold_idx={f_idx}_objective={o}_{net_type}/'
+                                    vals = get_best_params(pat,selection_criteria,model=net_type,dataset=d_str,fold=f_idx,seed=s,device=best_device,half_width=half_width,CRIT=criteria)
+                                    desc_df.append(vals)
+                                except Exception as e:
+                                    print(e)
+                        tmp = pd.DataFrame(desc_df,columns =criteria)
+                        tmp = tmp.describe()
+                        means = tmp.iloc[1,:].values.tolist()
+                        stds = tmp.iloc[2,:].values.tolist()
+                        desc_df = []
+                        for i in range(len(criteria)):
+                            desc_df.append(round(means[i],3))
+                            desc_df.append(round(stds[i],3))
+                        row = row + desc_df
+                        df.append(row)
+            all_jobs = pd.DataFrame(df,columns=cols)
+            piv_df  = pd.DataFrame()
+            piv_df['Method'] = all_jobs['objective'].apply(lambda x: x.replace('_','-')) +': '+ all_jobs['model'].apply(lambda x: x.replace('_','-'))
+            piv_df['dataset'] = all_jobs['dataset'].apply(lambda x: x.upper())
+            for crit,new_crit in zip(criteria,criteria_labels):
+                mean_col = crit+'_mean'
+                std_col = crit+'_std'
+                piv_df[new_crit] = '$'+ all_jobs[mean_col].astype(str)+'\pm'+ all_jobs[std_col].astype(str)+'$'
+
+            final_ = pd.pivot(piv_df,index='Method',columns='dataset')
+            print(final_)
+            print(final_.to_latex(buf=f"{result_name}_half_width={half_width}_index={index_indicator}.tex",escape=False))
+            final_.to_csv(f"{result_name}_half_width={half_width}_index={index_indicator}.csv")
 
 
 

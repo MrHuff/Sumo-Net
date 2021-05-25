@@ -28,7 +28,7 @@ def generate_job_params(directory='job_dir'):
         # 'patience': 21,
         'patience': 20,
         # 'hyperits': 300,
-        'hyperits': 20,
+        'hyperits': 100,
 
         'grid_size': 100,
         'test_grid_size': 100,
@@ -57,4 +57,4 @@ def generate_job_params(directory='job_dir'):
 
 if __name__ == '__main__':
         # generate_job_params(directory='testing')
-        generate_job_params(directory='kkbox_deephit_20')
+        generate_job_params(directory='kkbox_deephit_100')

@@ -51,7 +51,7 @@ if __name__ == '__main__':
             'd_out': 1,
             'dataset_string': datasets[i],
             'seed': 1337,#,np.random.randint(0,9999),
-            'total_epochs': 50,
+            'total_epochs': 0,
             'device': device,
             'patience': 100,
             'hyperits': 5,

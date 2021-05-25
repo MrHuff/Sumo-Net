@@ -291,10 +291,12 @@ class hyperopt_training():
 
             if self.net_type!='deephit_benchmark':
                 base_haz = self.wrapper.compute_baseline_hazards()
+                val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()
+                val_events = self.dataloader.dataset.val_delta.float().squeeze().numpy()
             else:
-                val_data = val_data_eval
-            val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()
-            val_conc, val_ibs, val_inll =self.benchmark_eval(y=val_durations,events=self.dataloader.dataset.val_delta.float().squeeze().numpy(),
+                val_events = self.dataloader.dataset.val_delta.float().squeeze().numpy()[bool_fixer_minus_1]
+                val_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.val_y.numpy()).squeeze()[bool_fixer_minus_1]
+            val_conc, val_ibs, val_inll =self.benchmark_eval(y=val_durations,events=val_events,
                                                              wrapper=self.wrapper,X=x_val)
             test_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.test_y.numpy()).squeeze()
             test_conc, test_ibs, test_inll =self.benchmark_eval(y=test_durations,events=self.dataloader.dataset.test_delta.float().squeeze().numpy(),

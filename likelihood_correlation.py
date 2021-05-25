@@ -7,7 +7,7 @@ datasets = [
             'flchain'
             ]
 if __name__ == '__main__':
-    d = 'base_run_results'
+    d = '300_runs_sumo_results'
     seed = 1337
     df = []
     for ds in datasets:
@@ -17,8 +17,8 @@ if __name__ == '__main__':
             for res in trials.results:
                 df.append([-res['test_loglikelihood_2'],res['test_conc'],-res['test_ibs'],-res['test_inll']])
     df_res = pd.DataFrame(df, columns=['likelihood', 'concordance', 'ibs', 'ibl'])
-    cor_mat = df_res.corr(method='pearson')
-    cor_mat.to_latex(f'{d}.tex')
+    cor_mat = df_res.corr(method='spearman')
+    cor_mat.to_latex(f'{d}_correlation.tex')
 
 
 # best_trial = sorted(trials.results, key=lambda x: x[selection_criteria], reverse=reverse)[0]
