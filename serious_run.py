@@ -90,7 +90,7 @@ if __name__ == '__main__':
         'direct_dif': [args['direct_dif']],
         'dropout': [0.0,0.1,0.2,0.3,0.4,0.5,0.6,0.7], #[0.0,0.7]
         'eps': [1.0],
-        'weight_decay': [0.0,0.01,0.02,0.05,0.1,0.2,0.4],
+        'weight_decay': [0.0,0.01,0.02,0.05,0.1,0.2,0.4] if args['net_type'] in ['cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark'] else [0],
         'T_losses': [90],
     }
     if args['net_type']=='deephit_benchmark':
