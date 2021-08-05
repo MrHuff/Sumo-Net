@@ -1,4 +1,6 @@
 import torch
+# from torch.distributions import Weibull,LogNormal
+
 
 class Log1PlusExp(torch.autograd.Function):
     """Implementation of x ↦ log(1 + exp(x))."""
@@ -80,6 +82,7 @@ class nn_node(torch.nn.Module): #Add dropout layers, Do embedding layer as well!
             X = torch.cat(cat_vals,dim=1)
         return self.dropout(self.f(self.w(X)))
 
+
 class bounded_nn_layer(torch.nn.Module): #Add dropout layers
     def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
         super(bounded_nn_layer, self).__init__()
@@ -101,6 +104,29 @@ class bounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
 
     def forward(self, X):
         return X @ self.bounding_op(self.W) + self.bias
+
+
+class unbounded_nn_layer(torch.nn.Module): #Add dropout layers
+    def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh,dropout=0.1):
+        super(unbounded_nn_layer, self).__init__()
+        self.W = torch.nn.Parameter(torch.randn(*(d_in,d_out)),requires_grad=True)
+        self.f = transformation
+        self.bounding_op = bounding_op
+        self.bias = torch.nn.Parameter(torch.randn(d_out),requires_grad=True)
+        self.dropout = torch.nn.Dropout(p=dropout)
+    def forward(self,X):
+        return self.dropout(self.f(X@self.W+self.bias))
+
+class unbounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
+    def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
+        super(unbounded_nn_layer_last, self).__init__()
+        self.W = torch.nn.Parameter(torch.randn(*(d_in, d_out)), requires_grad=True)
+        self.f = transformation
+        self.bounding_op = bounding_op
+        self.bias = torch.nn.Parameter(torch.randn(d_out), requires_grad=True)
+
+    def forward(self, X):
+        return X @ self.W + self.bias
 
 class mixed_layer(torch.nn.Module): #Add dropout layers
     def __init__(self, d_in, d_in_bounded, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
@@ -229,7 +255,7 @@ class survival_net_basic(torch.nn.Module):
                 allow_unused=True
             )
 
-        return f
+        return (f+1e-6).log()
 
     def forward_cum_hazard(self, x_cov, y, mask,x_cat=[]):
         x_cov = self.covariate_net((x_cov,x_cat))
@@ -267,6 +293,146 @@ class survival_net_basic(torch.nn.Module):
             x_cov = self.covariate_net((x_cov,x_cat))
             h = self.middle_net((x_cov, y))
             return 1-h.sigmoid_()
+
+class weibull_net(torch.nn.Module):
+    def __init__(self, d_in_x,
+                 cat_size_list,
+                 d_in_y,
+                 d_out,
+                 layers_x,
+                 layers_t,
+                 layers,
+                 dropout=0.9,
+                 bounding_op=lambda x: x**2,
+                 transformation=torch.tanh,
+                 direct_dif = True,
+                 objective = 'hazard',
+                 eps=1e-6):
+        super(weibull_net, self).__init__()
+        self.eps = eps
+        self.direct = direct_dif
+        self.objective  = objective
+        self.init_covariate_net(d_in_x,layers_x,cat_size_list,transformation,dropout)
+
+        if self.objective in ['hazard','hazard_mean']:
+            self.f = self.forward_hazard
+            self.f_cum = self.forward_cum_hazard
+        elif self.objective in ['S','S_mean']:
+            self.f=self.forward_f
+            self.f_cum=self.forward_S
+
+        self.a_net = self.init_middle_net(dx_in=layers_x[-1]+1, d_in_y=d_in_y, d_out=d_out, layers=layers,
+                             transformation=transformation, bounding_op=bounding_op,dropout=dropout)
+        self.b_net = self.init_middle_net(dx_in=layers_x[-1]+1, d_in_y=d_in_y, d_out=d_out, layers=layers,
+                             transformation=transformation, bounding_op=bounding_op,dropout=dropout)
+
+    def f_func(self,t,k,lamb):
+        k = k.exp().clip(0.5,5)
+        lamb = lamb.exp().clip(0.1,100)
+        # k = k.clip(1e-6,10)
+        # lamb = lamb.clip(1e-6,100)
+        f = (k/lamb)*(torch.pow((t/lamb+1e-3),(k-1))) * torch.exp(-torch.pow((t/lamb+1e-3),k)) + 1e-3
+        # f = k-lamb+(k-1)*((t+1e-6).log()-lamb)# - (((t+1e-6)/lamb.exp().clip(1e-6,100))**(k.exp().clip(0.5,5)))
+        return f.log()
+    def S_func(self,t,k,lamb):
+        k = k.exp().clip(0.5,5)
+        lamb = lamb.exp().clip(0.1,100)
+        return torch.exp(-torch.pow(t/lamb+1e-3,k))+1e-3
+
+    def init_middle_net(self, dx_in, d_in_y, d_out, layers, transformation, bounding_op,dropout):
+        module_list = [unbounded_nn_layer(d_in=dx_in, d_out=layers[0], bounding_op=bounding_op,
+                                     transformation=transformation,dropout=dropout)]
+        for l_i in range(1, len(layers)):
+            module_list.append(unbounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
+                                                transformation=transformation,dropout=dropout))
+        module_list.append(
+            unbounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
+        return multi_input_Sequential(*module_list)
+    def init_covariate_net(self,d_in_x,layers_x,cat_size_list,transformation,dropout):
+        module_list = [nn_node(d_in=d_in_x,d_out=layers_x[0],cat_size_list=cat_size_list,transformation=transformation,dropout=dropout)]
+        for l_i in range(1,len(layers_x)):
+            module_list.append(nn_node(d_in=layers_x[l_i-1],d_out=layers_x[l_i],cat_size_list=[],transformation=transformation,dropout=dropout))
+        self.covariate_net = multi_input_Sequential(*module_list)
+    def forward_S(self,x_cov,y,mask,x_cat=[]):
+        x_cov = x_cov[~mask,:]
+        y = y[~mask,:]
+        if not isinstance(x_cat,list):
+            x_cat=x_cat[~mask,:]
+        #Fix categorical business
+        x_cov = self.covariate_net((x_cov,x_cat))
+        cat_dat = torch.cat([x_cov,y],dim=1)
+        a = self.a_net(cat_dat) #this is wrong...
+        b = self.b_net(cat_dat)
+        S = self.S_func(y,a,b)+1e-6
+        return S.log()
+    def forward(self,x_cov,y,x_cat=[]):
+        return self.f(x_cov,y,x_cat)
+
+    def forward_cum(self,x_cov,y,mask,x_cat=[]):
+        return self.f_cum(x_cov, y,mask,x_cat)
+
+    def forward_f(self,x_cov,y,x_cat=[]):
+        x_cov = self.covariate_net((x_cov,x_cat))
+        cat_dat = torch.cat([x_cov,y],dim=1)
+        a = self.a_net(cat_dat) #this is wrong...
+        b = self.b_net(cat_dat)
+        f = self.f_func(y,a,b)
+        return f
+
+    def forward_S_eval(self,x_cov,y,x_cat=[]):
+        x_cov = self.covariate_net((x_cov, x_cat))
+        cat_dat = torch.cat([x_cov,y],dim=1)
+        a = self.a_net(cat_dat) #this is wrong...
+        b = self.b_net(cat_dat)
+        S = self.S_func(y,a,b)
+        return S
+
+class lognormal_net(weibull_net):
+    def __init__(self, d_in_x,
+                 cat_size_list,
+                 d_in_y,
+                 d_out,
+                 layers_x,
+                 layers_t,
+                 layers,
+                 dropout=0.9,
+                 bounding_op=lambda x: x ** 2,
+                 transformation=torch.tanh,
+                 direct_dif=True,
+                 objective='hazard',
+                 eps=1e-6):
+        super(lognormal_net, self).__init__(
+            d_in_x,
+            cat_size_list,
+            d_in_y,
+            d_out,
+            layers_x,
+            layers_t,
+            layers,
+            dropout,
+            bounding_op,
+            transformation,
+            direct_dif,
+            objective,
+            eps
+        )
+        self.const_1 = 2**0.5
+        self.const_2 = 2**0.5 * 3.1415927410125732**0.5
+
+
+    def f_func(self,t,mu,std):
+        std = std.sigmoid()*100+1e-6
+        # f = 1/(t*std*self.const_2) * torch.exp(-(torch.log(t)-mu)**2/(2*std**2))
+        f = -(t+std+self.const_2).log()  - (torch.log(t+1e-6)-mu)**2/(2*std**2)
+        return f
+
+    def S_func(self,t,mu,std):
+        std = std.sigmoid()*100+1e-6
+        S = 1-0.5*torch.erf((torch.log(t+1e-6)-mu)/(self.const_1*std))
+        return S
+
+
+
 
 class survival_net(torch.nn.Module):
     def __init__(self,
@@ -373,7 +539,7 @@ class survival_net(torch.nn.Module):
                 allow_unused=True
             )
 
-        return f
+        return (f+1e-6).log()
 
     def forward_cum_hazard(self, x_cov, y, mask,x_cat=[]):
         x_cov = self.covariate_net((x_cov,x_cat))
@@ -602,7 +768,11 @@ def log_objective(S,f):
 
 def log_objective_mean(S,f):
     n = S.shape[0]+f.shape[0]
-    return -((f+1e-6).log().sum()+S.sum())/n
+    return -(f.sum()+S.sum())/n
+
+# def log_objective_mean_2(S,f):
+#     n = S.shape[0]+f.shape[0]
+#     return -(f.sum()+S.sum())/n
 
 def log_objective_hazard(cum_hazard,hazard): #here cum_hazard should be a vector of
     # length n, and hazard only needs to be computed for all individuals with

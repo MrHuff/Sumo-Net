@@ -12,8 +12,11 @@ def load_obj(name,folder):
 
 # nets = ['survival_net_basic','cox_time_benchmark','deepsurv_benchmark','cox_CC_benchmark','cox_linear_benchmark','deephit_benchmark']
 # validate_on = [0,0,0,0,0,1]
-nets = ['deephit_benchmark']
-validate_on = [1]
+# nets = ['deephit_benchmark']
+# validate_on = [1]
+nets = ['weibull_net','lognormal_net']
+validate_on = [0,0]
+
 def generate_job_params(directory='job_dir'):
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -43,8 +46,8 @@ def generate_job_params(directory='job_dir'):
     }
     counter = 0
     for fold_idx in [0,1,2,3,4]:
-        for dataset in [4]:
-        # for dataset in [0,1,2,3]:
+        # for dataset in [4]:
+        for dataset in [0,1,2,3]:
             for l_type in [0]:
                 for net_t,sel_crit in zip(nets,validate_on):
                     base_dict['dataset']=dataset
@@ -57,4 +60,4 @@ def generate_job_params(directory='job_dir'):
 
 if __name__ == '__main__':
         # generate_job_params(directory='testing')
-        generate_job_params(directory='kkbox_deephit_100')
+        generate_job_params(directory='parametric_basic')

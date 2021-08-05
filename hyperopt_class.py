@@ -116,7 +116,7 @@ class hyperopt_training():
     def __call__(self,parameters_in):
         print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
         print(parameters_in)
-        sumo_net = self.net_type=='survival_net_basic'
+        sumo_net = self.net_type in ['survival_net_basic','survival_net','weibull_net','lognormal_net']
         self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx,sumo_net=sumo_net)
         self.cycle_length = self.dataloader.__len__()//self.validation_interval+1
         print('cycle_length',self.cycle_length)
@@ -140,6 +140,10 @@ class hyperopt_training():
         self.train_objective = get_objective(self.objective)
         if self.net_type=='survival_net':
             self.model = survival_net(**net_init_params).to(self.device)
+        elif self.net_type=='weibull_net':
+            self.model = weibull_net(**net_init_params).to(self.device)
+        elif self.net_type=='lognormal_net':
+            self.model = lognormal_net(**net_init_params).to(self.device)
         elif self.net_type=='survival_net_basic':
             self.model = survival_net_basic(**net_init_params).to(self.device)
         elif self.net_type=='ocean_net':
@@ -473,9 +477,14 @@ class hyperopt_training():
                 x_cat_f = []
             S = self.model.forward_cum(X,y,mask,x_cat)
             f = self.model(X_f,y_f,x_cat_f)
+            # print(torch.isnan(S).sum())
+            # print(torch.isnan(f).sum())
             total_loss =self.train_objective(S,f)
             self.optimizer.zero_grad()
             total_loss.backward()
+            # for par in self.model.parameters():
+            #     print(par.grad)
+
             self.optimizer.step()
             total_loss_train+=total_loss.detach()
             tot_likelihood+=total_loss.detach()
