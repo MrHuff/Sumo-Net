@@ -14,9 +14,14 @@ def load_obj(name,folder):
 # validate_on = [0,0,0,0,0,1]
 # nets = ['deephit_benchmark']
 # validate_on = [1]
-nets = ['weibull_net','lognormal_net']
-validate_on = [0,0]
+# nets = ['weibull_net','lognormal_net']
+# validate_on = [0,0]
+# nets = ['lognormal_net']
+# validate_on = [0]
 
+
+nets = ['survival_net_basic']
+validate_on = [0]
 def generate_job_params(directory='job_dir'):
     if not os.path.exists(directory):
         os.makedirs(directory)
@@ -25,17 +30,14 @@ def generate_job_params(directory='job_dir'):
         os.makedirs(directory)
     base_dict = {
         'dataset': 0,
-        'seed': 1337,
-        # 'total_epochs': 100,
-        'total_epochs': 25,
-        # 'patience': 21,
+        'seed': 2,
+        'total_epochs': 100,
+        # 'total_epochs': 25,
         'patience': 20,
-        # 'hyperits': 300,
-        'hyperits': 100,
+        'hyperits': 50,
 
         'grid_size': 100,
         'test_grid_size': 100,
-        # 'validation_interval': 3,
         'validation_interval': 4,
         'loss_type': 0,
         'net_type': 'ocean_net',
@@ -45,19 +47,21 @@ def generate_job_params(directory='job_dir'):
         'use_sotle': False,
     }
     counter = 0
-    for fold_idx in [0,1,2,3,4]:
-        # for dataset in [4]:
-        for dataset in [0,1,2,3]:
-            for l_type in [0]:
-                for net_t,sel_crit in zip(nets,validate_on):
-                    base_dict['dataset']=dataset
-                    base_dict['loss_type']=l_type
-                    base_dict['net_type']=net_t
-                    base_dict['fold_idx']=fold_idx
-                    base_dict['selection_criteria'] = sel_crit
-                    save_obj(base_dict,f'job_{counter}',directory+'/')
-                    counter +=1
+    for seed in [1,2,1337,3,4]:
+        for fold_idx in [0,1,2,3,4]:
+            for dataset in [3]:
+            # for dataset in [0,1,2,3]:
+                for l_type in [0]:
+                    for net_t,sel_crit in zip(nets,validate_on):
+                        base_dict['dataset']=dataset
+                        base_dict['loss_type']=l_type
+                        base_dict['net_type']=net_t
+                        base_dict['fold_idx']=fold_idx
+                        base_dict['selection_criteria'] = sel_crit
+                        base_dict['seed']=seed
+                        save_obj(base_dict,f'job_{counter}',directory+'/')
+                        counter +=1
 
 if __name__ == '__main__':
         # generate_job_params(directory='testing')
-        generate_job_params(directory='parametric_basic')
+        generate_job_params(directory='sumo_net_flchain_1')

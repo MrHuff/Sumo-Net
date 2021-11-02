@@ -327,17 +327,18 @@ class weibull_net(torch.nn.Module):
                              transformation=transformation, bounding_op=bounding_op,dropout=dropout)
 
     def f_func(self,t,k,lamb):
-        k = k.exp().clip(0.5,5)
-        lamb = lamb.exp().clip(0.1,100)
+        k = k.exp().clip(1,5)
+        lamb = lamb.exp().clip(0.5,100)
         # k = k.clip(1e-6,10)
         # lamb = lamb.clip(1e-6,100)
-        f = (k/lamb)*(torch.pow((t/lamb+1e-3),(k-1))) * torch.exp(-torch.pow((t/lamb+1e-3),k)) + 1e-3
-        # f = k-lamb+(k-1)*((t+1e-6).log()-lamb)# - (((t+1e-6)/lamb.exp().clip(1e-6,100))**(k.exp().clip(0.5,5)))
-        return f.log()
+        # f = (k/lamb)*(torch.pow((t/lamb+1e-3),(k-1))) * torch.exp(-torch.pow((t/lamb+1e-3),k)) + 1e-3
+        f = k.log()-lamb.log()+(k-1)*((t+1e-6).log()-lamb.log()) - torch.pow((t/lamb+1e-6),k)
+        return f
+
     def S_func(self,t,k,lamb):
-        k = k.exp().clip(0.5,5)
-        lamb = lamb.exp().clip(0.1,100)
-        return torch.exp(-torch.pow(t/lamb+1e-3,k))+1e-3
+        k = k.exp().clip(1,5)
+        lamb = lamb.exp().clip(0.5,100)
+        return torch.exp(-torch.pow(t/lamb+1e-6,k))
 
     def init_middle_net(self, dx_in, d_in_y, d_out, layers, transformation, bounding_op,dropout):
         module_list = [unbounded_nn_layer(d_in=dx_in, d_out=layers[0], bounding_op=bounding_op,
@@ -372,12 +373,25 @@ class weibull_net(torch.nn.Module):
         return self.f_cum(x_cov, y,mask,x_cat)
 
     def forward_f(self,x_cov,y,x_cat=[]):
+        y = torch.autograd.Variable(y,requires_grad=True)
+
         x_cov = self.covariate_net((x_cov,x_cat))
         cat_dat = torch.cat([x_cov,y],dim=1)
         a = self.a_net(cat_dat) #this is wrong...
         b = self.b_net(cat_dat)
-        f = self.f_func(y,a,b)
-        return f
+        # f = self.f_func(y,a,b)
+        F= 1-self.S_func(y,a,b)
+        f, = torch.autograd.grad(
+            outputs=[F],
+            inputs=[y],
+            grad_outputs=torch.ones_like(F),
+            retain_graph=True,
+            create_graph=True,
+            only_inputs=True,
+            allow_unused=True
+        )
+
+        return (f+1e-6).log()
 
     def forward_S_eval(self,x_cov,y,x_cat=[]):
         x_cov = self.covariate_net((x_cov, x_cat))
@@ -423,12 +437,12 @@ class lognormal_net(weibull_net):
     def f_func(self,t,mu,std):
         std = std.sigmoid()*100+1e-6
         # f = 1/(t*std*self.const_2) * torch.exp(-(torch.log(t)-mu)**2/(2*std**2))
-        f = -(t+std+self.const_2).log()  - (torch.log(t+1e-6)-mu)**2/(2*std**2)
+        f = -((t+1e-6) * std  *self.const_2 ).log()  - (torch.log(t+1e-6)-mu)**2/(2*std**2)
         return f
 
     def S_func(self,t,mu,std):
         std = std.sigmoid()*100+1e-6
-        S = 1-0.5*torch.erf((torch.log(t+1e-6)-mu)/(self.const_1*std))
+        S = 0.5-0.5*torch.erf((torch.log(t+1e-6)-mu)/(self.const_1*std))
         return S
 
 
@@ -764,7 +778,7 @@ def get_objective(objective):
         return log_objective_mean
 
 def log_objective(S,f):
-    return -(f+1e-6).log().sum()-S.sum()
+    return -(f).sum()-S.sum()
 
 def log_objective_mean(S,f):
     n = S.shape[0]+f.shape[0]

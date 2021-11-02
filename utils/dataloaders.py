@@ -54,10 +54,10 @@ pd.set_option('display.max_columns', 500)
 pd.set_option('display.width', 1000)
 
 
-class surival_dataset(Dataset):
+class survival_dataset(Dataset):
     def __init__(self,str_identifier,seed=1337,fold_idx=0,sumo_net=True):
         print('fold_idx: ', fold_idx)
-        super(surival_dataset, self).__init__()
+        super(survival_dataset, self).__init__()
         if str_identifier=='support':
             data = support
             cont_cols = ['x0','x3','x7','x8','x9','x10','x11','x12','x13']
@@ -276,6 +276,6 @@ class custom_dataloader():
         return self.len
 
 def get_dataloader(str_identifier,bs,seed,fold_idx,shuffle=True,sumo_net=False):
-    d = surival_dataset(str_identifier,seed,fold_idx=fold_idx,sumo_net=sumo_net)
+    d = survival_dataset(str_identifier, seed, fold_idx=fold_idx, sumo_net=sumo_net)
     dat = custom_dataloader(dataset=d,batch_size=bs,shuffle=shuffle)
     return dat
