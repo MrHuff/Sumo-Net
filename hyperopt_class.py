@@ -73,7 +73,6 @@ class hyperopt_training():
         self.net_type = job_param['net_type']
         self.fold_idx = job_param['fold_idx']
         self.savedir = job_param['savedir']
-        self.use_sotle = job_param['use_sotle']
         self.global_hyperit = 0
         self.best = np.inf
         self.debug = False
@@ -82,7 +81,7 @@ class hyperopt_training():
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
 
-        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay','T_losses']
+        self.hyperopt_params = ['bounding_op', 'transformation', 'depth_x', 'width_x','depth_t', 'width_t', 'depth', 'width', 'bs', 'lr','direct_dif','dropout','eps','weight_decay']
         self.deephit_params= ['alpha','sigma','num_dur']
         self.get_hyperparameterspace(hyper_param_space)
 
@@ -120,7 +119,6 @@ class hyperopt_training():
         self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx,sumo_net=sumo_net)
         self.cycle_length = self.dataloader.__len__()//self.validation_interval+1
         print('cycle_length',self.cycle_length)
-        self.T_losses = parameters_in['T_losses']
         net_init_params = {
             'd_in_x' : self.dataloader.dataset.X.shape[1],
             'cat_size_list': self.dataloader.dataset.unique_cat_cols,
@@ -341,11 +339,18 @@ class hyperopt_training():
 
         self.dataloader.dataset.set(mode='test')
         self.model = self.model.train()
-        if self.net_type=='benchmark':
+        if self.net_type!='survival_net_basic':
             start = time.time()
-            base_haz = self.wrapper.compute_baseline_hazards()
+            if self.net_type!='deephit_benchmark':
+                base_haz = self.wrapper.compute_baseline_hazards()
             test_durations = self.dataloader.dataset.invert_duration(self.dataloader.dataset.test_y.numpy()).squeeze()
-            surv = self.wrapper.predict_surv_df(self.dataloader.dataset.test_X)
+            cat_cols_nr = len(self.dataloader.dataset.unique_cat_cols)
+            if cat_cols_nr==0:
+                x_test = self.dataloader.dataset.test_X.numpy()
+            else:
+                x_test = tt.tuplefy((self.dataloader.dataset.test_X.numpy(), self.dataloader.dataset.test_cat_X.numpy()))
+
+            surv = self.wrapper.predict_surv_df(x_test)
             t_grid_np = np.linspace(test_durations.min(), test_durations.max(), surv.index.shape[0])
             surv = surv.set_index(t_grid_np)
             end = time.time()
@@ -366,9 +371,6 @@ class hyperopt_training():
                 mask = delta == 1
                 if not isinstance(x_cat, list):
                     x_cat = x_cat.to(self.device)
-                    x_cat_f = x_cat[mask, :]
-                else:
-                    x_cat_f = []
                 if not isinstance(x_cat, list):
                     for chk, chk_cat in zip(torch.chunk(X, chunks), torch.chunk(x_cat, chunks)):
                         input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
@@ -424,22 +426,7 @@ class hyperopt_training():
             print(f'tr_likelihood: {tr_likelihood[0]} tr_likelihood: {tr_likelihood[1]} tr_conc: {tr_conc} tr_ibs: {tr_ibs}  tr_ibll: {tr_ibll}')
         print(f'criteria score: {criteria} val likelihood: {val_likelihood[0]} val likelihood: {val_likelihood[1]} val conc:{conc} val ibs: {ibs} val inll {ibll}')
         return criteria
-    def eval_sotl(self,i,training_loss,likelihood,reg_loss):
-        _ = self.do_metrics(training_loss, likelihood, reg_loss, i)
-        criteria = self.sotl_e_list.get_sum()
-        print(f'SOTL epoch {i}: {criteria}')
-        if i>self.T_losses:
-            self.scheduler.step(criteria)
-            if criteria < self.best:
-                self.best = criteria
-                print('new best val score: ', self.best)
-                print('Dumping model')
-                self.dump_model()
-                self.counter = 0
-            else:
-                self.counter += 1
-            if self.counter > self.patience:
-                return True
+
 
     def eval_func(self,i,training_loss,likelihood,reg_loss):
         if i % self.cycle_length == 0:
@@ -488,16 +475,9 @@ class hyperopt_training():
             self.optimizer.step()
             total_loss_train+=total_loss.detach()
             tot_likelihood+=total_loss.detach()
-            if not self.use_sotle:
-                if self.eval_func(i,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
-                    return True
-            else:
-                sotl_estimator_total_loss.append(total_loss.detach().item())
-        if self.use_sotle:
-            mean_loss = sum(sotl_estimator_total_loss)/len(sotl_estimator_total_loss)
-            self.sotl_e_list.insert(mean_loss)
-            if self.eval_sotl(epoch,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
+            if self.eval_func(i,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
                 return True
+
         return False
 
     def eval_loop_kkbox(self,grid_size):
@@ -656,7 +636,6 @@ class hyperopt_training():
 
     def full_loop(self):
         self.counter = 0
-        self.sotl_e_list = fifo_list(n=self.T_losses)
         if self.debug:
             self.writer =SummaryWriter()
             self.debug_list = []

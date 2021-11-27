@@ -11,13 +11,12 @@ datasets = ['support',
             'gbsg',
             'flchain',
             'kkbox',
-            'weibull',
-            'checkboard',
-            'normal'
             ]
 #Uppgrade dataloader rip, probably uses some retarded permutation which is really slow.
 #Write serious job script, figure out post processing pipeline...
 if __name__ == '__main__':
+    output_name = 'complexity_test_extend_epoch'
+
     hyper_param_space = {
         # torch.nn.functional.elu,torch.nn.functional.relu,
         'bounding_op': [square],  # torch.sigmoid, torch.relu, torch.exp,
@@ -38,13 +37,17 @@ if __name__ == '__main__':
     timings = []
     devices = GPUtil.getAvailable(order='memory', limit=8)
     device = devices[0]
-    for i in [0,1,2,3,4,5,6,7]:
-        for net in ['benchmark','survival_net_basic']:
-            if net=='benchmark':
-                hyper_param_space['depth']=[2]
-            else:
+    for i in [0,1,2,3,4]:
+        for net in ['cox_linear_benchmark','cox_CC_benchmark','cox_time_benchmark','deephit_benchmark','deepsurv_benchmark','survival_net_basic']:
+            if net == 'deephit_benchmark':
+                hyper_param_space['alpha'] = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
+                hyper_param_space['sigma'] = [0.1, 0.25, 0.5, 1]
+                hyper_param_space['num_dur'] = [100]
+            if net=='survival_net_basic':
                 hyper_param_space['depth']=[1]
-            for f in [0,1,2,3,4]:
+            else:
+                hyper_param_space['depth']=[2]
+            for f in [0,1,2]:
                 job_params = {
                     'd_out': 1,
                     'dataset_string': datasets[i],
@@ -61,13 +64,15 @@ if __name__ == '__main__':
                     'net_type':net,
                     'objective': 'S_mean',
                     'fold_idx':f,
-                    'savedir':'complexity_test'
-
+                    'savedir':output_name
                 }
                 training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
+                epoch_start = time.time()
                 training_obj.run()
+                epoch_end = time.time()
+                epoch_time = epoch_end-epoch_start
                 timing = training_obj.complexity_test(100)
-                timings.append([i,net,f,timing])
+                timings.append([i,net,f,timing,epoch_time])
 
-    df = pd.DataFrame(timings,columns=['dataset','net','fold','time'])
-    df.to_csv('raw_timings_new_redo.csv')
+    df = pd.DataFrame(timings,columns=['dataset','net','fold','time','epoch_time'])
+    df.to_csv(f'{output_name}.csv')
