@@ -2,7 +2,7 @@ import setuptools
 with open("README.md", "r") as fh:
     long_description = fh.read()
 setuptools.setup(
-     name='sumo',
+     name='SuMo-net',
      version='0.1',
      author="Robert Hu",
      author_email="robert.hu@stats.ox.ac.uk",

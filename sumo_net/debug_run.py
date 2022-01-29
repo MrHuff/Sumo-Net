@@ -1,4 +1,4 @@
-from sumo_net.hyperopt_class import *
+from hyperopt_class import *
 import numpy as np
 
 import torch

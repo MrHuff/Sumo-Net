@@ -5,6 +5,7 @@ import torch
 import os
 import pickle
 import numpy as np
+from utils.dataloaders import custom_dataloader
 from pycox_local.pycox.evaluation import EvalSurv
 import pandas as pd
 import shutil
@@ -15,6 +16,8 @@ from pycox_local.pycox.models.cox_time import MLPVanillaCoxTime,MixedInputMLPCox
 import torchtuples as tt
 import time
 from utils.deephit_transformation_fix import *
+
+
 def square(x):
     return x**2
 
@@ -57,7 +60,7 @@ class fifo_list():
         return sum(self.fifo_list)
 
 class hyperopt_training():
-    def __init__(self,job_param,hyper_param_space):
+    def __init__(self,job_param,hyper_param_space,custom_dataset=None):
         self.d_out = job_param['d_out']
         self.dataset_string = job_param['dataset_string']
         self.seed = job_param['seed']
@@ -77,6 +80,7 @@ class hyperopt_training():
         self.best = np.inf
         self.debug = False
         torch.cuda.set_device(self.device)
+        self.custom_dataset = custom_dataset
         self.save_path = f'{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
@@ -116,7 +120,10 @@ class hyperopt_training():
         print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
         print(parameters_in)
         sumo_net = self.net_type in ['survival_net_basic','survival_net','weibull_net','lognormal_net']
-        self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx,sumo_net=sumo_net)
+        if self.custom_dataset is not None:
+            self.dataloader=custom_dataloader(dataset=self.custom_dataset, batch_size=parameters_in['bs'], shuffle=True)
+        else:
+            self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx,sumo_net=sumo_net)
         self.cycle_length = self.dataloader.__len__()//self.validation_interval+1
         print('cycle_length',self.cycle_length)
         net_init_params = {
@@ -448,7 +455,6 @@ class hyperopt_training():
         total_loss_train=0.
         tot_likelihood=0.
         tot_reg_loss=0.
-        sotl_estimator_total_loss=[]
         self.model = self.model.train()
         for i,(X,x_cat,y,delta,s_kmf) in enumerate(tqdm(self.dataloader)):
             X = X.to(self.device)
@@ -462,8 +468,12 @@ class hyperopt_training():
                 x_cat_f = x_cat[mask,:]
             else:
                 x_cat_f = []
-            S = self.model.forward_cum(X,y,mask,x_cat)
-            f = self.model(X_f,y_f,x_cat_f)
+            S = self.model.forward_cum(X, y, mask, x_cat)
+            if S.numel() == 0:
+                S=S.detach()
+            f = self.model(X_f, y_f, x_cat_f)
+            if f.numel() == 0:
+                f=f.detach()
             # print(torch.isnan(S).sum())
             # print(torch.isnan(f).sum())
             total_loss =self.train_objective(S,f)
@@ -477,20 +487,16 @@ class hyperopt_training():
             tot_likelihood+=total_loss.detach()
             if self.eval_func(i,total_loss_train/(i+1),tot_likelihood/(i+1),tot_reg_loss/(i+1)):
                 return True
-
         return False
 
-    def eval_loop_kkbox(self,grid_size):
+    def eval_loop(self,grid_size,chunks=50):
         self.model.eval()
         S_series_container = []
         S_log = []
         f_log = []
         durations = []
         events = []
-        # self.model = self.model.eval()
-        # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
-        # events  = self.dataloader.dataset.delta.numpy()
-        chunks = self.dataloader.batch_size//50+1
+        chunks = self.dataloader.batch_size//chunks+1
         t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                 grid_size)
         time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
@@ -506,75 +512,17 @@ class hyperopt_training():
                 x_cat_f = x_cat[mask, :]
             else:
                 x_cat_f = []
-            S = self.model.forward_cum(X, y,mask,x_cat)
-            S = S.detach()
-            f = self.model(X_f, y_f,x_cat_f)
-            f = f.detach()
-            S_log.append(S)
-            f_log.append(f)
-            if i*self.dataloader.batch_size<50000:
-                if not isinstance(x_cat, list):
-                    for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
-                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
-                        X_repeat = chk.repeat_interleave(grid_size, 0)
-                        x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
-                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
-                        S_serie = S_serie.detach()
-                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-                else:
-                    x_cat_repeat = []
-                    for chk in torch.chunk(X, chunks):
-                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
-                        X_repeat = chk.repeat_interleave(grid_size, 0)
-                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
-                        S_serie = S_serie.detach()
-                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-                durations.append(y.cpu().numpy())
-                events.append(delta.cpu().numpy())
-        non_normalized_durations = np.concatenate(durations)
-        durations = self.dataloader.dataset.invert_duration(non_normalized_durations).squeeze()
-        #durations = np.concatenate(durations).squeeze()
-        events = np.concatenate(events).squeeze()
-        S_log = torch.cat(S_log)
-        f_log = torch.cat(f_log)
-        S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
-        t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
-        S_series_container=S_series_container.set_index(t_grid_np)
-        val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
-        self.model.train()
-        return [val_likelihood.item(),val_likelihood.item()],conc,ibs,inll
+            if torch.sum(mask).item() != mask.shape[0]:
+                S = self.model.forward_cum(X, y, mask, x_cat)
+                S = S.detach()
+                S_log.append(S)
+            if torch.sum(mask).item() != 0:
+                X_f = X_f.to(self.device)
+                y_f = y_f.to(self.device)
+                f = self.model(X_f, y_f, x_cat_f)
+                f = f.detach()
+                f_log.append(f)
 
-
-    def eval_loop(self,grid_size):
-        self.model.eval()
-        S_series_container = []
-        S_log = []
-        f_log = []
-        durations = []
-        events = []
-        # self.model = self.model.eval()
-        # durations  = self.dataloader.dataset.invert_duration(self.dataloader.dataset.y.numpy()).squeeze()
-        # events  = self.dataloader.dataset.delta.numpy()
-        chunks = self.dataloader.batch_size//50+1
-        t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
-                                grid_size)
-        time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-        for i, (X, x_cat, y, delta,s_kmf) in enumerate(tqdm(self.dataloader)):
-            X = X.to(self.device)
-            y = y.to(self.device)
-            delta = delta.to(self.device)
-            mask = delta == 1
-            X_f = X[mask, :]
-            y_f = y[mask, :]
-            if not isinstance(x_cat, list):
-                x_cat = x_cat.to(self.device)
-                x_cat_f = x_cat[mask, :]
-            else:
-                x_cat_f = []
-            S = self.model.forward_cum(X, y,mask,x_cat)
-            S = S.detach()
-            f = self.model(X_f, y_f,x_cat_f)
-            f = f.detach()
             if not isinstance(x_cat, list):
                 for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
                     input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
@@ -591,39 +539,41 @@ class hyperopt_training():
                     S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
                     S_serie = S_serie.detach()
                     S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-            S_log.append(S)
-            f_log.append(f)
+            if S_log:
+                S_log = torch.cat(S_log)
+            else:
+                S_log = torch.empty(0, 1, dtype=torch.float32).to(self.device)
+
+            if f_log:
+                f_log = torch.cat(f_log)
+            else:
+                f_log = torch.empty(0, 1, dtype=torch.float32).to(self.device)
             durations.append(y.cpu().numpy())
             events.append(delta.cpu().numpy())
         non_normalized_durations = np.concatenate(durations)
         durations = self.dataloader.dataset.invert_duration(non_normalized_durations).squeeze()
-        #durations = np.concatenate(durations).squeeze()
         events = np.concatenate(events).squeeze()
         S_log = torch.cat(S_log)
         f_log = torch.cat(f_log)
         S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
-        S_series_container_2 = S_series_container.set_index(t_grid_np)
         t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
         S_series_container=S_series_container.set_index(t_grid_np)
-        #S_series_container=S_series_container.set_index(t_grid_np)
         val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
-        # coxL = general_likelihood(self.model)
-        # val_likelihood_1 = coxL.estimate_likelihood_df(torch.from_numpy(non_normalized_durations).float(),torch.from_numpy(events),S_series_container_2)
         self.model.train()
         return [val_likelihood.item(),val_likelihood.item()],conc,ibs,inll
 
     def train_score(self):
+        chunks=100
         self.dataloader.dataset.set(mode='train')
         if self.dataset_string=='kkbox':
-            return self.eval_loop_kkbox(self.grid_size)
-        else:
-            return self.eval_loop(self.grid_size)
+            chunks = 5000
+        return self.eval_loop(self.grid_size,chunks=chunks)
     def validation_score(self):
         self.dataloader.dataset.set(mode='val')
+        chunks=100
         if self.dataset_string=='kkbox':
-            return self.eval_loop_kkbox(self.grid_size)
-        else:
-            return self.eval_loop(self.grid_size)
+            chunks = 5000
+        return self.eval_loop(self.grid_size,chunks=chunks)
 
     def test_score(self):
         self.dataloader.dataset.set(mode='test')

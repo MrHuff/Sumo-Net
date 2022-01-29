@@ -1,6 +1,6 @@
 from serious_run import datasets
 import GPUtil
-from hyperopt_class import *
+from sumo_net.hyperopt_class import *
 from utils.plot_utils import *
 
 if __name__ == '__main__':

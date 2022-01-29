@@ -1,7 +1,6 @@
 import pycox_local.pycox.datasets
-from hyperopt_class import *
+from sumo_net.hyperopt_class import *
 import torch
-import GPUtil
 import argparse
 import warnings
 warnings.simplefilter("ignore")

@@ -1,5 +1,4 @@
-from hyperopt_class import *
-import numpy as np
+from sumo_net.hyperopt_class import *
 import torch
 import GPUtil
 import warnings
