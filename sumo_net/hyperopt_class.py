@@ -60,7 +60,7 @@ class fifo_list():
         return sum(self.fifo_list)
 
 class hyperopt_training():
-    def __init__(self,job_param,hyper_param_space,custom_dataset=None):
+    def __init__(self,job_param,hyper_param_space,custom_dataloader=None):
         self.d_out = job_param['d_out']
         self.dataset_string = job_param['dataset_string']
         self.seed = job_param['seed']
@@ -80,7 +80,7 @@ class hyperopt_training():
         self.best = np.inf
         self.debug = False
         torch.cuda.set_device(self.device)
-        self.custom_dataset = custom_dataset
+        self.custom_dataloader = custom_dataloader
         self.save_path = f'{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
@@ -120,14 +120,16 @@ class hyperopt_training():
         print(f"----------------new hyperopt iteration {self.global_hyperit}------------------")
         print(parameters_in)
         sumo_net = self.net_type in ['survival_net_basic','survival_net','weibull_net','lognormal_net']
-        if self.custom_dataset is not None:
-            self.dataloader=custom_dataloader(dataset=self.custom_dataset, batch_size=parameters_in['bs'], shuffle=True)
+        if self.custom_dataloader is not None:
+            self.dataloader=self.custom_dataloader
+            x_c = self.dataloader.dataset.x_c
         else:
             self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx,sumo_net=sumo_net)
+            x_c = self.dataloader.dataset.X.shape[1]
         self.cycle_length = self.dataloader.__len__()//self.validation_interval+1
         print('cycle_length',self.cycle_length)
         net_init_params = {
-            'd_in_x' : self.dataloader.dataset.X.shape[1],
+            'd_in_x' : x_c,
             'cat_size_list': self.dataloader.dataset.unique_cat_cols,
             'd_in_y' : self.dataloader.dataset.y.shape[1],
             'd_out' : self.d_out,
@@ -371,7 +373,7 @@ class hyperopt_training():
             t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                     grid_size)
             time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-            for i, (X, x_cat, y, delta,s_kmf) in enumerate(tqdm(self.dataloader)):
+            for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
                 X = X.to(self.device)
                 y = y.to(self.device)
                 delta = delta.to(self.device)
@@ -456,7 +458,7 @@ class hyperopt_training():
         tot_likelihood=0.
         tot_reg_loss=0.
         self.model = self.model.train()
-        for i,(X,x_cat,y,delta,s_kmf) in enumerate(tqdm(self.dataloader)):
+        for i,(X,x_cat,y,delta) in enumerate(tqdm(self.dataloader)):
             X = X.to(self.device)
             y = y.to(self.device)
             delta = delta.to(self.device)
@@ -500,7 +502,7 @@ class hyperopt_training():
         t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
                                 grid_size)
         time_grid = torch.from_numpy(t_grid_np).float().unsqueeze(-1)
-        for i, (X, x_cat, y, delta,s_kmf) in enumerate(tqdm(self.dataloader)):
+        for i, (X, x_cat, y, delta) in enumerate(tqdm(self.dataloader)):
             X = X.to(self.device)
             y = y.to(self.device)
             delta = delta.to(self.device)
@@ -539,22 +541,21 @@ class hyperopt_training():
                     S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
                     S_serie = S_serie.detach()
                     S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-            if S_log:
-                S_log = torch.cat(S_log)
-            else:
-                S_log = torch.empty(0, 1, dtype=torch.float32).to(self.device)
 
-            if f_log:
-                f_log = torch.cat(f_log)
-            else:
-                f_log = torch.empty(0, 1, dtype=torch.float32).to(self.device)
             durations.append(y.cpu().numpy())
             events.append(delta.cpu().numpy())
         non_normalized_durations = np.concatenate(durations)
         durations = self.dataloader.dataset.invert_duration(non_normalized_durations).squeeze()
         events = np.concatenate(events).squeeze()
-        S_log = torch.cat(S_log)
-        f_log = torch.cat(f_log)
+        if S_log:
+            S_log = torch.cat(S_log)
+        else:
+            S_log = torch.empty(0, 1, dtype=torch.float32).to(self.device)
+
+        if f_log:
+            f_log = torch.cat(f_log)
+        else:
+            f_log = torch.empty(0, 1, dtype=torch.float32).to(self.device)
         S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
         t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
         S_series_container=S_series_container.set_index(t_grid_np)

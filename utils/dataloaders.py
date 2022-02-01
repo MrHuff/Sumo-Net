@@ -166,11 +166,7 @@ class survival_dataset(Dataset):
         d = delta.values
         kmf = KaplanMeierFitter()
         kmf.fit(y,1-delta)
-        s_kmf = kmf.predict(y.squeeze()).values
-        t_kmf = kmf.predict(times).values
         setattr(self,f'{mode}_times', torch.from_numpy(times.astype('float32')).float().unsqueeze(-1))
-        setattr(self,f'{mode}_s_kmf', torch.from_numpy(s_kmf.astype('float32')).float().unsqueeze(-1))
-        setattr(self,f'{mode}_t_kmf', torch.from_numpy(t_kmf.astype('float32')).float().unsqueeze(-1))
         setattr(self,f'{mode}_delta', torch.from_numpy(delta.astype('float32').values).float())
         setattr(self,f'{mode}_y', torch.from_numpy(y).float())
         setattr(self, f'{mode}_X', torch.from_numpy(X).float())
@@ -180,8 +176,6 @@ class survival_dataset(Dataset):
     def set(self,mode='train'):
         self.X = getattr(self,f'{mode}_X')
         self.y = getattr(self,f'{mode}_y')
-        self.s_kmf = getattr(self,f'{mode}_s_kmf')
-        self.t_kmf = getattr(self,f'{mode}_t_kmf')
         self.times = getattr(self,f'{mode}_times')
         self.delta = getattr(self,f'{mode}_delta')
         if self.cat_cols:
@@ -210,7 +204,7 @@ class survival_dataset(Dataset):
         return self.X.shape[0]
 
 class chunk_iterator():
-    def __init__(self,X,delta,y,cat_X,shuffle,batch_size,s_kmf):
+    def __init__(self,X,delta,y,cat_X,shuffle,batch_size):
         self.X = X
         self.delta = delta
         self.y = y
@@ -219,21 +213,18 @@ class chunk_iterator():
         self.batch_size = batch_size
         self.n = self.X.shape[0]
         self.chunks=self.n//batch_size+1
-        self.s_kmf = s_kmf
         self.perm = torch.randperm(self.n)
         self.valid_cat = not isinstance(self.cat_X, list)
         if self.shuffle:
             self.X = self.X[self.perm,:]
             self.delta = self.delta[self.perm]
             self.y = self.y[self.perm,:]
-            self.s_kmf = self.s_kmf[self.perm,:]
             if self.valid_cat: #F
                 self.cat_X = self.cat_X[self.perm,:]
         self._index = 0
         self.it_X = torch.chunk(self.X,self.chunks)
         self.it_delta = torch.chunk(self.delta,self.chunks)
         self.it_y = torch.chunk(self.y,self.chunks)
-        self.it_s_kmf = torch.chunk(self.s_kmf,self.chunks)
         if self.valid_cat:  # F
             self.it_cat_X = torch.chunk(self.cat_X,self.chunks)
         else:
@@ -244,9 +235,9 @@ class chunk_iterator():
         ''''Returns the next value from team object's lists '''
         if self._index < self.true_chunks:
             if self.valid_cat:
-                result = (self.it_X[self._index],self.it_cat_X[self._index],self.it_y[self._index],self.it_delta[self._index], self.it_s_kmf[self._index])
+                result = (self.it_X[self._index],self.it_cat_X[self._index],self.it_y[self._index],self.it_delta[self._index])
             else:
-                result = (self.it_X[self._index],[],self.it_y[self._index],self.it_delta[self._index],self.it_s_kmf[self._index])
+                result = (self.it_X[self._index],[],self.it_y[self._index],self.it_delta[self._index])
             self._index += 1
             return result
         # End of Iteration
@@ -269,7 +260,7 @@ class custom_dataloader():
                               cat_X = self.dataset.cat_X,
                               shuffle = self.shuffle,
                               batch_size=self.batch_size,
-                              s_kmf= self.dataset.s_kmf)
+                              )
     def __len__(self):
         self.n = self.dataset.X.shape[0]
         self.len = self.n // self.batch_size + 1
