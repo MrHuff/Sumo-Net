@@ -76,6 +76,8 @@ class hyperopt_training():
         self.net_type = job_param['net_type']
         self.fold_idx = job_param['fold_idx']
         self.savedir = job_param['savedir']
+        self.chunks = job_param['chunks']
+        self.max_series_accumulation = job_param['max_series_accumulation']
         self.global_hyperit = 0
         self.best = np.inf
         self.debug = False
@@ -122,6 +124,7 @@ class hyperopt_training():
         sumo_net = self.net_type in ['survival_net_basic','survival_net','weibull_net','lognormal_net']
         if self.custom_dataloader is not None:
             self.dataloader=self.custom_dataloader
+            self.dataloader.batch_size = parameters_in['bs']
             x_c = self.dataloader.dataset.x_c
         else:
             self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx,sumo_net=sumo_net)
@@ -491,7 +494,7 @@ class hyperopt_training():
                 return True
         return False
 
-    def eval_loop(self,grid_size,chunks=50):
+    def eval_loop(self,grid_size,chunks=50,max_series_accumulation=50000):
         self.model.eval()
         S_series_container = []
         S_log = []
@@ -524,26 +527,25 @@ class hyperopt_training():
                 f = self.model(X_f, y_f, x_cat_f)
                 f = f.detach()
                 f_log.append(f)
-
-            if not isinstance(x_cat, list):
-                for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
-                    input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
-                    X_repeat = chk.repeat_interleave(grid_size, 0)
-                    x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
-                    S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
-                    S_serie = S_serie.detach()
-                    S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-            else:
-                x_cat_repeat = []
-                for chk in torch.chunk(X, chunks):
-                    input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
-                    X_repeat = chk.repeat_interleave(grid_size, 0)
-                    S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
-                    S_serie = S_serie.detach()
-                    S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
-
-            durations.append(y.cpu().numpy())
-            events.append(delta.cpu().numpy())
+            if i*X.shape[1]*grid_size<max_series_accumulation:
+                if not isinstance(x_cat, list):
+                    for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
+                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                        X_repeat = chk.repeat_interleave(grid_size, 0)
+                        x_cat_repeat = chk_cat.repeat_interleave(grid_size, 0)
+                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                        S_serie = S_serie.detach()
+                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                else:
+                    x_cat_repeat = []
+                    for chk in torch.chunk(X, chunks):
+                        input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
+                        X_repeat = chk.repeat_interleave(grid_size, 0)
+                        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+                        S_serie = S_serie.detach()
+                        S_series_container.append(S_serie.view(-1, grid_size).t().cpu())
+                durations.append(y.cpu().numpy())
+                events.append(delta.cpu().numpy())
         non_normalized_durations = np.concatenate(durations)
         durations = self.dataloader.dataset.invert_duration(non_normalized_durations).squeeze()
         events = np.concatenate(events).squeeze()
@@ -564,17 +566,11 @@ class hyperopt_training():
         return [val_likelihood.item(),val_likelihood.item()],conc,ibs,inll
 
     def train_score(self):
-        chunks=100
         self.dataloader.dataset.set(mode='train')
-        if self.dataset_string=='kkbox':
-            chunks = 5000
-        return self.eval_loop(self.grid_size,chunks=chunks)
+        return self.eval_loop(self.grid_size,chunks=self.chunks,max_series_accumulation=self.max_series_accumulation)
     def validation_score(self):
         self.dataloader.dataset.set(mode='val')
-        chunks=100
-        if self.dataset_string=='kkbox':
-            chunks = 5000
-        return self.eval_loop(self.grid_size,chunks=chunks)
+        return self.eval_loop(self.grid_size,chunks=self.chunks,max_series_accumulation=self.max_series_accumulation)
 
     def test_score(self):
         self.dataloader.dataset.set(mode='test')

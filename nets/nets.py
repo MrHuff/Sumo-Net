@@ -202,7 +202,7 @@ class survival_net_basic(torch.nn.Module):
         module_list = [nn_node(d_in=d_in_x,d_out=layers_x[0],cat_size_list=cat_size_list,transformation=transformation,dropout=dropout)]
         for l_i in range(1,len(layers_x)):
             module_list.append(nn_node(d_in=layers_x[l_i-1],d_out=layers_x[l_i],cat_size_list=[],transformation=transformation,dropout=dropout))
-        self.covariate_net = multi_input_Sequential(*module_list)
+        self.covariate_net = multi_input_Sequential_res_net(*module_list)
 
     def init_middle_net(self, dx_in, d_in_y, d_out, layers, transformation, bounding_op):
         # self.mixed_layer = mixed_layer(d_in=dx_in, d_in_bounded=d_in_y, d_out=layers[0], transformation=transformation, bounding_op=bounding_op,dropout=dropout)
@@ -213,7 +213,7 @@ class survival_net_basic(torch.nn.Module):
                                                 transformation=transformation))
         module_list.append(
             bounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
-        self.middle_net = multi_input_Sequential(*module_list)
+        self.middle_net = multi_input_Sequential_res_net(*module_list)
 
     def forward(self,x_cov,y,x_cat=[]):
         return self.f(x_cov,y,x_cat)
