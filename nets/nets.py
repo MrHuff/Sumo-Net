@@ -86,10 +86,10 @@ class nn_node(torch.nn.Module): #Add dropout layers, Do embedding layer as well!
 class bounded_nn_layer(torch.nn.Module): #Add dropout layers
     def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
         super(bounded_nn_layer, self).__init__()
-        self.W = torch.nn.Parameter(torch.randn(*(d_in,d_out)),requires_grad=True)
+        self.W = torch.nn.Parameter(torch.randn(*(d_in,d_out))/d_in**0.5,requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
-        self.bias = torch.nn.Parameter(torch.randn(d_out),requires_grad=True)
+        self.bias = torch.nn.Parameter(torch.randn(d_out)/d_out**0.5,requires_grad=True)
 
     def forward(self,X):
         return self.f(X@self.bounding_op(self.W)+self.bias)
@@ -97,10 +97,10 @@ class bounded_nn_layer(torch.nn.Module): #Add dropout layers
 class bounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
     def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
         super(bounded_nn_layer_last, self).__init__()
-        self.W = torch.nn.Parameter(torch.randn(*(d_in, d_out)), requires_grad=True)
+        self.W = torch.nn.Parameter(torch.randn(*(d_in, d_out))/d_in**0.5, requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
-        self.bias = torch.nn.Parameter(torch.randn(d_out), requires_grad=True)
+        self.bias = torch.nn.Parameter(torch.randn(d_out)/d_out**0.5, requires_grad=True)
 
     def forward(self, X):
         return X @ self.bounding_op(self.W) + self.bias
@@ -109,10 +109,10 @@ class bounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
 class unbounded_nn_layer(torch.nn.Module): #Add dropout layers
     def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh,dropout=0.1):
         super(unbounded_nn_layer, self).__init__()
-        self.W = torch.nn.Parameter(torch.randn(*(d_in,d_out)),requires_grad=True)
+        self.W = torch.nn.Parameter(torch.randn(*(d_in,d_out))/d_in**0.5,requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
-        self.bias = torch.nn.Parameter(torch.randn(d_out),requires_grad=True)
+        self.bias = torch.nn.Parameter(torch.randn(d_out)/d_out**0.5,requires_grad=True)
         self.dropout = torch.nn.Dropout(p=dropout)
     def forward(self,X):
         return self.dropout(self.f(X@self.W+self.bias))
@@ -120,10 +120,10 @@ class unbounded_nn_layer(torch.nn.Module): #Add dropout layers
 class unbounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
     def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
         super(unbounded_nn_layer_last, self).__init__()
-        self.W = torch.nn.Parameter(torch.randn(*(d_in, d_out)), requires_grad=True)
+        self.W = torch.nn.Parameter(torch.randn(*(d_in, d_out))//d_in**0.5, requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
-        self.bias = torch.nn.Parameter(torch.randn(d_out), requires_grad=True)
+        self.bias = torch.nn.Parameter(torch.randn(d_out)/d_out**0.5, requires_grad=True)
 
     def forward(self, X):
         return X @ self.W + self.bias
@@ -131,10 +131,10 @@ class unbounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
 class mixed_layer(torch.nn.Module): #Add dropout layers
     def __init__(self, d_in, d_in_bounded, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
         super(mixed_layer, self).__init__()
-        self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out)), requires_grad=True)
+        self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out))/d_in_bounded**0.5, requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
-        self.bias = torch.nn.Parameter(torch.randn(d_out), requires_grad=True)
+        self.bias = torch.nn.Parameter(torch.randn(d_out)/d_out**0.5, requires_grad=True)
         self.w = torch.nn.Linear(d_in,d_out)
 
     def forward(self,X,x_bounded):
@@ -143,10 +143,10 @@ class mixed_layer(torch.nn.Module): #Add dropout layers
 class mixed_layer_all(torch.nn.Module): #Add dropout layers
     def __init__(self, d_in, d_in_bounded,cat_size_list,d_out,bounding_op=lambda x: x ** 2, transformation=torch.tanh,dropout=0.0):
         super(mixed_layer_all, self).__init__()
-        self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out)), requires_grad=True)
+        self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out))/d_in_bounded**0.5, requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
-        self.bias = torch.nn.Parameter(torch.randn(d_out), requires_grad=True)
+        self.bias = torch.nn.Parameter(torch.randn(d_out)/d_out**0.5, requires_grad=True)
         self.x_node = nn_node(d_in=d_in,d_out=d_out,cat_size_list=cat_size_list,dropout=dropout,transformation=lambda x:x)
 
     def forward(self,X,x_cat,x_bounded):
@@ -155,10 +155,10 @@ class mixed_layer_all(torch.nn.Module): #Add dropout layers
 class mixed_layer_2(torch.nn.Module): #Add dropout layers
     def __init__(self, d_in, d_in_bounded, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
         super(mixed_layer_2, self).__init__()
-        self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out//2)), requires_grad=True)
+        self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out//2))/d_in_bounded**0.5, requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
-        self.bias = torch.nn.Parameter(torch.randn(d_out//2), requires_grad=True)
+        self.bias = torch.nn.Parameter(torch.randn(d_out//2)/d_out**0.5, requires_grad=True)
         self.w = torch.nn.Linear(d_in,d_out//2)
 
     def forward(self,X,x_bounded):

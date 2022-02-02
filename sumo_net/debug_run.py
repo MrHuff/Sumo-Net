@@ -71,6 +71,9 @@ if __name__ == '__main__':
             'fold_idx':1 ,
             'savedir':'test',
             'use_sotle':False,
+            'chunks': 50,
+            'max_series_accumulation': 25000,
+            'validate_train':False
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         # training_obj.debug=True

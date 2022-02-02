@@ -78,6 +78,7 @@ class hyperopt_training():
         self.savedir = job_param['savedir']
         self.chunks = job_param['chunks']
         self.max_series_accumulation = job_param['max_series_accumulation']
+        self.validate_train = job_param['validate_train']
         self.global_hyperit = 0
         self.best = np.inf
         self.debug = False
@@ -433,7 +434,7 @@ class hyperopt_training():
         elif self.selection_criteria == 'inll':
             criteria = ibll  # "minimize"
         print(f'total_loss: {training_loss} likelihood: {likelihood} reg_loss: {reg_loss}')
-        if self.dataset_string!='kkbox':
+        if self.validate_train:
             tr_likelihood, tr_conc, tr_ibs, tr_ibll = self.train_score()
             print(f'tr_likelihood: {tr_likelihood[0]} tr_likelihood: {tr_likelihood[1]} tr_conc: {tr_conc} tr_ibs: {tr_ibs}  tr_ibll: {tr_ibll}')
         print(f'criteria score: {criteria} val likelihood: {val_likelihood[0]} val likelihood: {val_likelihood[1]} val conc:{conc} val ibs: {ibs} val inll {ibll}')
@@ -527,7 +528,7 @@ class hyperopt_training():
                 f = self.model(X_f, y_f, x_cat_f)
                 f = f.detach()
                 f_log.append(f)
-            if i*X.shape[1]*grid_size<max_series_accumulation:
+            if i*X.shape[0]<max_series_accumulation:
                 if not isinstance(x_cat, list):
                     for chk,chk_cat in zip(torch.chunk(X, chunks),torch.chunk(x_cat, chunks)):
                         input_time = time_grid.repeat((chk.shape[0], 1)).to(self.device)
