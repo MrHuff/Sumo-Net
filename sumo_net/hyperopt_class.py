@@ -82,7 +82,8 @@ class hyperopt_training():
         self.global_hyperit = 0
         self.best = np.inf
         self.debug = False
-        torch.cuda.set_device(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.set_device(self.device)
         self.custom_dataloader = custom_dataloader
         self.save_path = f'{self.savedir}/{self.dataset_string}_seed={self.seed}_fold_idx={self.fold_idx}_objective={self.objective}_{self.net_type}/'
         if not os.path.exists(self.save_path):
@@ -95,7 +96,11 @@ class hyperopt_training():
     def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
         val_likelihood = self.train_objective(S,f)
         eval_obj = EvalSurv(surv=S_extended,durations=durations,events=events,censor_surv='km') #Add index and pass as DF
-        conc = eval_obj.concordance_td()
+        try:
+            conc = eval_obj.concordance_td()
+        except Exception as e:
+            print(e)
+            conc = np.nan
         ibs = eval_obj.integrated_brier_score(time_grid)
         inll = eval_obj.integrated_nbll(time_grid)
         return val_likelihood,conc,ibs,inll

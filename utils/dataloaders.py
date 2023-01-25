@@ -58,12 +58,11 @@ class survival_dataset(Dataset):
     def __init__(self,str_identifier,seed=1337,fold_idx=0,sumo_net=True):
         print('fold_idx: ', fold_idx)
         super(survival_dataset, self).__init__()
-        if str_identifier=='support':
+        if str_identifier in ['support','support_censored']:
             data = support
             cont_cols = ['x0','x3','x7','x8','x9','x10','x11','x12','x13']
             binary_cols = ['x1','x4','x5']
             cat_cols = ['x2','x6']
-
         elif str_identifier=='metabric':
             data = metabric
             cont_cols = ['x0', 'x1', 'x2', 'x3', 'x8']
@@ -102,6 +101,9 @@ class survival_dataset(Dataset):
             cat_cols = []
         df_full = data.read_df()
         df_full = df_full.dropna()
+        if 'censored' in str_identifier:
+            df_full = df_full[df_full['event']==0]
+
 
         if str_identifier=='kkbox':
             self.event_col = 'event'
