@@ -5,7 +5,7 @@ import torch
 import GPUtil
 import warnings
 warnings.simplefilter("ignore")
-datasets = ['support_censored',
+datasets = ['support',
             'metabric',
             'gbsg',
             'flchain',
@@ -25,12 +25,12 @@ if __name__ == '__main__':
         'bounding_op': [torch.relu],  # torch.sigmoid, torch.relu, torch.exp,
         'transformation': [torch.nn.Tanh()],
         'depth_x': [2],
-        'width_x': [16], #adapt for smaller time net
+        'width_x': [32], #adapt for smaller time net
         'depth_t': [1],
         'width_t': [1], #ads
         'depth': [2],
         'width': [16],
-        'bs': [1000],
+        'bs': [500],
         'lr': [1e-2],
         'direct_dif': ['autograd'],
         'dropout': [0.1],
@@ -64,8 +64,10 @@ if __name__ == '__main__':
             'fold_idx':1 ,
             'savedir':'test',
             'use_sotle':False,
+            'conformal':True,
         }
         training_obj = hyperopt_training(job_param=job_params,hyper_param_space=hyper_param_space)
         # training_obj.debug=True
         training_obj.run()
         training_obj.post_process()
+        training_obj.fit_conformal()

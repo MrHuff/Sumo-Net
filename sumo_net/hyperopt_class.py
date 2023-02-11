@@ -16,35 +16,38 @@ from pycox_local.pycox.models.cox_time import MLPVanillaCoxTime,MixedInputMLPCox
 import torchtuples as tt
 import time
 from utils.deephit_transformation_fix import *
-
-
+from sksurv.metrics import CensoringDistributionEstimator
 def square(x):
     return x**2
 
 def linear(x):
     return x
+def BrierScore(events,z,S,times):
+    dat = list(map(tuple, np.stack([events,z],axis=1)))
+    km_data = np.array(dat,dtype=[('event','?'),('duration','f4')])
+    cens = CensoringDistributionEstimator().fit(km_data)
+    prob_cens_y = cens.predict_proba(z)
+    prob_cens_y[prob_cens_y == 0] = np.inf
+    prob_cens_t = cens.predict_proba(times)
+    prob_cens_t[prob_cens_t == 0] = np.inf
 
-def ibs_calc(S,mask_1,mask_2,gst,gt):
+    brier_scores = []
+    for i, t in enumerate(times):
+        est = S.values[i,:]
+        is_case = (z <= t) & events.astype(bool)
+        is_control = z > t
 
-    weights_2 = 1./gt
-    weights_2[weights_2==float("Inf")]=0.0
-    weights_1 = 1./gst
-    weights_1[weights_1==float("Inf")]=0.0
-    return ((S**2)*mask_1)*weights_1 + ((1.-S)**2 * mask_2)*weights_2
+        brier_scores.append(
+            np.square(est) * is_case.astype(int) / prob_cens_y
+            + np.square(1.0 - est) * is_control.astype(int) / prob_cens_t[i]
+        )
+    brier_scores = np.stack(brier_scores,0)
+    return times, brier_scores,prob_cens_t,cens
 
-def ibll_calc(S,mask_1,mask_2,gst,gt):
-    weights_2 = 1./gt
-    weights_2[weights_2==float("Inf")]=0.0
-    weights_1 = 1./gst
-    weights_1[weights_1==float("Inf")]=0.0
-    return ((torch.log(1-S+1e-6))*mask_1)*weights_1 + ((torch.log(S+1e-6)) * mask_2)*weights_2
-
-def simpsons_composite(S,step_size,n):
-    idx_odd = torch.arange(1,n-1,2)
-    idx_even = torch.arange(2,n,2)
-    S[idx_odd]=S[idx_odd]*4
-    S[idx_even]=S[idx_even]*2
-    return torch.sum(S)*step_size/3.
+def IntegratedBrierScores(events,z,S,times):
+    times,brier_scores,cens_t,km_fit = BrierScore(events,z,S,times)
+    ibs_values = np.trapz(brier_scores, times,axis=0) / (times[-1] - times[0])
+    return ibs_values
 
 class fifo_list():
     def __init__(self,n):
@@ -79,6 +82,7 @@ class hyperopt_training():
         self.chunks = job_param['chunks']
         self.max_series_accumulation = job_param['max_series_accumulation']
         self.validate_train = job_param['validate_train']
+        self.conformal  = job_param['conformal']
         self.global_hyperit = 0
         self.best = np.inf
         self.debug = False
@@ -93,9 +97,9 @@ class hyperopt_training():
         self.deephit_params= ['alpha','sigma','num_dur']
         self.get_hyperparameterspace(hyper_param_space)
 
-    def calc_eval_objective(self,S,f,S_extended,durations,events,time_grid):
-        val_likelihood = self.train_objective(S,f)
-        eval_obj = EvalSurv(surv=S_extended,durations=durations,events=events,censor_surv='km') #Add index and pass as DF
+    def calc_eval_objective(self,S_log,f_log,S_series_container,durations,events,time_grid):
+        val_likelihood = self.train_objective(S_log,f_log)
+        eval_obj = EvalSurv(surv=S_series_container,durations=durations,events=events,censor_surv='km') #Add index and pass as DF
         try:
             conc = eval_obj.concordance_td()
         except Exception as e:
@@ -133,7 +137,7 @@ class hyperopt_training():
             self.dataloader.batch_size = parameters_in['bs']
             x_c = self.dataloader.dataset.x_c
         else:
-            self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx,sumo_net=sumo_net)
+            self.dataloader = get_dataloader(self.dataset_string,parameters_in['bs'],self.seed,self.fold_idx,sumo_net=sumo_net,conformal=self.conformal)
             x_c = self.dataloader.dataset.X.shape[1]
         self.cycle_length = self.dataloader.__len__()//self.validation_interval+1
         print('cycle_length',self.cycle_length)
@@ -500,7 +504,7 @@ class hyperopt_training():
                 return True
         return False
 
-    def eval_loop(self,grid_size,chunks=50,max_series_accumulation=50000):
+    def get_S_series(self,grid_size,chunks=50,max_series_accumulation=50000):
         self.model.eval()
         S_series_container = []
         S_log = []
@@ -567,9 +571,23 @@ class hyperopt_training():
         S_series_container = pd.DataFrame(torch.cat(S_series_container,1).numpy())
         t_grid_np = self.dataloader.dataset.invert_duration(t_grid_np.reshape(-1, 1)).squeeze()
         S_series_container=S_series_container.set_index(t_grid_np)
-        val_likelihood,conc,ibs,inll = self.calc_eval_objective(S_log, f_log,S_series_container,durations=durations,events=events,time_grid=t_grid_np)
+        data = {
+            'S_log':S_log,
+                   'f_log':f_log,
+            'S_series_container':S_series_container,
+            'durations':durations,
+            'events':events,
+            'time_grid':t_grid_np
+        }
+        return data
+
+    def eval_loop(self,grid_size,chunks=50,max_series_accumulation=50000):
+        data = self.get_S_series(grid_size,chunks,max_series_accumulation)
+        val_likelihood,conc,ibs,inll = self.calc_eval_objective(**data)
         self.model.train()
         return [val_likelihood.item(),val_likelihood.item()],conc,ibs,inll
+
+
 
     def train_score(self):
         self.dataloader.dataset.set(mode='train')
@@ -580,7 +598,21 @@ class hyperopt_training():
 
     def test_score(self):
         self.dataloader.dataset.set(mode='test')
-        return self.eval_loop(self.grid_size)
+        return self.eval_loop(self.grid_size,chunks=self.chunks,max_series_accumulation=self.max_series_accumulation)
+
+    def conformal_score(self):
+        self.dataloader.dataset.set(mode='conformal')
+        data = self.get_S_series(grid_size =self.grid_size,chunks=self.chunks,max_series_accumulation=self.max_series_accumulation)
+        times,brier_scores,cens_t,km_fit= BrierScore(events=data['events'],
+                                                 z=data['durations'],
+                                                 S=data['S_series_container'],
+                                                 times = data['time_grid']
+                                                 )
+        return times,brier_scores,cens_t,km_fit
+
+
+        #return calibration_scores #get ibs per series of data. Then evaluate against ibs on held out datapoint of interest
+
     def dump_model(self):
         torch.save(self.model.state_dict(), self.save_path + f'best_model_{self.global_hyperit}.pt')
 
@@ -658,6 +690,22 @@ class hyperopt_training():
         pickle.dump(trials,
                     open(self.save_path + 'hyperopt_database.p',
                          "wb"))
+
+    def fit_conformal(self): #Think about choice of score and also move data to amazon local gpu, should initially be fine with log(\hat{S}(t,x))
+        self.conformal_scores,self.times,self.cens_t,self.km_fit = self.conformal_score()
+    def conformal_survival_prediction(self,X,x_cat=[]):
+        t_grid_np = np.linspace(self.dataloader.dataset.min_duration, self.dataloader.dataset.max_duration,
+                                self.grid_size)
+        input_time = torch.from_numpy(t_grid_np).to(self.device)
+
+        X_repeat = X.expand(input_time.shape[0],-1)
+
+        if not isinstance(x_cat, list):
+            x_cat_repeat = x_cat.expand(input_time.shape[0],-1)
+        else:
+            x_cat_repeat = []
+        S_serie = self.model.forward_S_eval(X_repeat, input_time, x_cat_repeat)  # Fix
+        S_serie = S_serie.detach()
 
 
     def post_process(self):
