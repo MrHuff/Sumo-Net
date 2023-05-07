@@ -78,7 +78,6 @@ class r_param_cholesky_scaling(torch.nn.Module):
             self.register_buffer('Z', Z)
         self.register_buffer('X', X)
         self.sigma = sigma
-        self.cap = 1e-1
 
     def init_L(self):
         with torch.no_grad():
@@ -124,20 +123,15 @@ class r_param_cholesky_scaling(torch.nn.Module):
             self.parametrize_Z = True
 
     def forward(self, x1, x2=None):
+
+        #Only moving parts supposed to be L, so matrix is PSD by definition unless anything else is moving!
         L = torch.tril(self.L) + self.eye * self.reg
         L = ensure_pos_diag(L)
         Z = self.Z
         if x2 is None:
             kzx = self.k(Z, x1).evaluate()
-            t = L.t() @ kzx  # L\cdot k(Z,X)
-
-            if self.parametrize_Z:
-                kzz = self.k(Z).evaluate()
-                chol_z = torch.linalg.cholesky(kzz + self.eye * self.reg)
-                sol = torch.cholesky_solve(kzx, chol_z)
-            else:
-                # sol = torch.cholesky_solve(kzx, self.inv_L)
-                sol = self.inv_Z @ kzx
+            t = L.t() @ (kzx)  # L\cdot k(Z,X)
+            sol = self.inv_Z @ kzx
             if len(t.shape) == 3:  # t=[L^T k(Z,X_i),L^T k(Z,X_{i+1}),]
                 T_mat = t.permute(0, 2, 1) @ t  # T_mat ok
                 inverse_part = kzx.permute(0, 2, 1) @ sol
@@ -145,21 +139,15 @@ class r_param_cholesky_scaling(torch.nn.Module):
                 return out
             else:
                 T_mat = t.t() @ t
-                out = self.k(x1).evaluate() - kzx.t() @ sol + T_mat
+                out = self.k(x1).evaluate() - kzx.t() @ sol + T_mat #needs a parametrization that is guaranteed PSD due to re-parametrization trick
                 return out
         else:
             kzx_1 = self.k(Z, x1).evaluate()
             kzx_2 = self.k(Z, x2).evaluate()
-            t = L.t() @ kzx_2
-            t_ = kzx_1.t() @ L
+            t = L.t() @ (kzx_2)
+            t_ = (kzx_1).t() @ L
             T_mat = t_ @ t
-            if self.parametrize_Z:
-                kzz = self.k(Z).evaluate()
-                chol_z = torch.linalg.cholesky(kzz + self.eye * self.reg)
-                sol = torch.cholesky_solve(kzx_2, chol_z)
-            else:
-                # sol = torch.cholesky_solve(kzx_2, self.inv_L)
-                sol = self.inv_Z @ kzx_2
+            sol = self.inv_Z @ kzx_2
             out = self.k(x1, x2).evaluate() - kzx_1.t() @ sol + T_mat  # /self.sigma
             return out
 
@@ -237,7 +225,7 @@ class GWI(torch.nn.Module):
         y_f = torch.autograd.Variable(y_f, requires_grad=True)
         x_concat_f = torch.cat([X_f,y_f],dim=1)
         cov_mat_f = self.r(x_concat_f)
-        L_f = torch.cholesky(cov_mat_f) @ torch.randn_like(y_f)
+        L_f = torch.linalg.cholesky(cov_mat_f)@ torch.randn_like(y_f)
         f, h_f = self.m_q.forward_f(X_f, y_f, x_cat_f,L_f)
         if f.numel() == 0:
             f = f.detach()
@@ -268,6 +256,13 @@ class GWI(torch.nn.Module):
             sigma = sigma * T
         log_loss = self.N * tr_Q / (2. * sigma) + ll
         return log_loss / X.shape[0] + D
+
+    def predict_mean_h(self,X,y,x_cat=[]):
+        return self.m_q.forward_h(X,y,x_cat)
+
+    def predict_variance_h(self,X,y):
+        x_concat_f = torch.cat([X,y],dim=1)
+        return self.r(x_concat_f.unsqueeze(1)).squeeze()
 
     def mean_forward(self, X):
         return self.m_q(X)

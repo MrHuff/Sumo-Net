@@ -221,9 +221,10 @@ class hyperopt_training():
         z_dat = torch.cat([self.Z,self.Y_Z],dim=1)
         x_dat = torch.cat([self.X_hat,self.Y_hat],dim=1)
         self.p_kernel = GWISurvivalKernel(self.X, self.Y)
+        for parameters in self.p_kernel.parameters():
+            parameters.requires_grad=False
         self.r = r_param_cholesky_scaling(k=self.p_kernel, Z=z_dat, X=x_dat, sigma=1.0,
                                          parametrize_Z=False)
-        self.r = self.r.to("cpu")
         self.r.init_L()
         self.r.to(self.device)
         self.model = GWI(
@@ -349,6 +350,8 @@ class hyperopt_training():
 
     def dump_model(self):
         torch.save(self.model.state_dict(), self.save_path + f'best_model_{self.global_hyperit}.pt')
+        torch.save(self.model, self.save_path + f'best_model_full_{self.global_hyperit}.pt')
+
 
     def load_model(self):
         self.model.load_state_dict(torch.load(self.save_path + f'best_model_{self.global_hyperit}.pt'))

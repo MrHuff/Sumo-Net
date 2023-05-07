@@ -149,16 +149,12 @@ class hyperopt_training():
         }
         cat_cols_nr = len(self.dataloader.dataset.unique_cat_cols)
         self.train_objective = get_objective(self.objective)
-        if self.net_type=='survival_net':
-            self.model = survival_net(**net_init_params).to(self.device)
-        elif self.net_type=='weibull_net':
+        if self.net_type=='weibull_net':
             self.model = weibull_net(**net_init_params).to(self.device)
         elif self.net_type=='lognormal_net':
             self.model = lognormal_net(**net_init_params).to(self.device)
         elif self.net_type=='survival_net_basic':
             self.model = survival_net_basic(**net_init_params).to(self.device)
-        elif self.net_type=='ocean_net':
-            self.model = ocean_net(**net_init_params).to(self.device)
         elif self.net_type=='cox_time_benchmark':
             if cat_cols_nr==0:
                 self.model = MLPVanillaCoxTime(in_features=net_init_params['d_in_x'],

@@ -1,7 +1,8 @@
 import torch
 # from torch.distributions import Weibull,LogNormal
 
-
+def linear(x):
+    return x
 class Log1PlusExp(torch.autograd.Function):
     """Implementation of x ↦ log(1 + exp(x))."""
     @staticmethod
@@ -84,7 +85,7 @@ class nn_node(torch.nn.Module): #Add dropout layers, Do embedding layer as well!
 
 
 class bounded_nn_layer(torch.nn.Module): #Add dropout layers
-    def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
+    def __init__(self, d_in, d_out, bounding_op, transformation=torch.tanh):
         super(bounded_nn_layer, self).__init__()
         self.W = torch.nn.Parameter(torch.randn(*(d_in,d_out))/d_in**0.5,requires_grad=True)
         self.f = transformation
@@ -95,7 +96,7 @@ class bounded_nn_layer(torch.nn.Module): #Add dropout layers
         return self.f(X@self.bounding_op(self.W)+self.bias)
 
 class bounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
-    def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
+    def __init__(self, d_in, d_out, bounding_op, transformation=torch.tanh):
         super(bounded_nn_layer_last, self).__init__()
         self.W = torch.nn.Parameter(torch.randn(*(d_in, d_out))/d_in**0.5, requires_grad=True)
         self.f = transformation
@@ -107,7 +108,7 @@ class bounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
 
 
 class unbounded_nn_layer(torch.nn.Module): #Add dropout layers
-    def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh,dropout=0.1):
+    def __init__(self, d_in, d_out, bounding_op, transformation=torch.tanh,dropout=0.1):
         super(unbounded_nn_layer, self).__init__()
         self.W = torch.nn.Parameter(torch.randn(*(d_in,d_out))/d_in**0.5,requires_grad=True)
         self.f = transformation
@@ -118,7 +119,7 @@ class unbounded_nn_layer(torch.nn.Module): #Add dropout layers
         return self.dropout(self.f(X@self.W+self.bias))
 
 class unbounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
-    def __init__(self, d_in, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
+    def __init__(self, d_in, d_out, bounding_op, transformation=torch.tanh):
         super(unbounded_nn_layer_last, self).__init__()
         self.W = torch.nn.Parameter(torch.randn(*(d_in, d_out))//d_in**0.5, requires_grad=True)
         self.f = transformation
@@ -129,7 +130,7 @@ class unbounded_nn_layer_last(torch.nn.Module):  # Add dropout layers
         return X @ self.W + self.bias
 
 class mixed_layer(torch.nn.Module): #Add dropout layers
-    def __init__(self, d_in, d_in_bounded, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
+    def __init__(self, d_in, d_in_bounded, d_out, bounding_op, transformation=torch.tanh):
         super(mixed_layer, self).__init__()
         self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out))/d_in_bounded**0.5, requires_grad=True)
         self.f = transformation
@@ -141,19 +142,19 @@ class mixed_layer(torch.nn.Module): #Add dropout layers
         return self.f(x_bounded @ self.bounding_op(self.pos_weights) + self.bias + self.w(X))
 
 class mixed_layer_all(torch.nn.Module): #Add dropout layers
-    def __init__(self, d_in, d_in_bounded,cat_size_list,d_out,bounding_op=lambda x: x ** 2, transformation=torch.tanh,dropout=0.0):
+    def __init__(self, d_in, d_in_bounded,cat_size_list,d_out,bounding_op, transformation=torch.tanh,dropout=0.0):
         super(mixed_layer_all, self).__init__()
         self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out))/d_in_bounded**0.5, requires_grad=True)
         self.f = transformation
         self.bounding_op = bounding_op
         self.bias = torch.nn.Parameter(torch.randn(d_out)/d_out**0.5, requires_grad=True)
-        self.x_node = nn_node(d_in=d_in,d_out=d_out,cat_size_list=cat_size_list,dropout=dropout,transformation=lambda x:x)
+        self.x_node = nn_node(d_in=d_in,d_out=d_out,cat_size_list=cat_size_list,dropout=dropout,transformation=linear)
 
     def forward(self,X,x_cat,x_bounded):
         return  self.f(x_bounded @ self.bounding_op(self.pos_weights) + self.bias + self.x_node(X,x_cat))
 
 class mixed_layer_2(torch.nn.Module): #Add dropout layers
-    def __init__(self, d_in, d_in_bounded, d_out, bounding_op=lambda x: x ** 2, transformation=torch.tanh):
+    def __init__(self, d_in, d_in_bounded, d_out, bounding_op, transformation=torch.tanh):
         super(mixed_layer_2, self).__init__()
         self.pos_weights = torch.nn.Parameter(torch.randn(*(d_in_bounded, d_out//2))/d_in_bounded**0.5, requires_grad=True)
         self.f = transformation
@@ -177,7 +178,7 @@ class survival_net_basic(torch.nn.Module):
                  layers_t,
                  layers,
                  dropout=0.9,
-                 bounding_op=lambda x: x**2,
+                 bounding_op=torch.relu,
                  transformation=torch.tanh,
                  direct_dif = True,
                  objective = 'hazard',
@@ -211,7 +212,7 @@ class survival_net_basic(torch.nn.Module):
             module_list.append(bounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
                                                 transformation=transformation))
         module_list.append(
-            bounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
+            bounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=linear))
         self.middle_net = multi_input_Sequential_res_net(*module_list)
 
     def forward(self,x_cov,y,x_cat=[]):
@@ -303,7 +304,7 @@ class survival_GWI(survival_net_basic):
                  layers_t,
                  layers,
                  dropout=0.9,
-                 bounding_op=lambda x: x**2,
+                 bounding_op=torch.relu,
                  transformation=torch.tanh,
                  direct_dif = True,
                  objective = 'hazard',
@@ -329,7 +330,6 @@ class survival_GWI(survival_net_basic):
             x_cat=x_cat[~mask,:]
         x_cov = self.covariate_net((x_cov,x_cat))
         h = self.middle_net((x_cov,y))
-
         if L_reparam is not None:
             h = h + L_reparam
         return -log1plusexp(h), h
@@ -359,9 +359,14 @@ class survival_GWI(survival_net_basic):
                 allow_unused=True
             )
 
-        return (f+1e-6).log(),h
+        return (torch.relu(f)+1e-6).log(),h
+    def forward_h(self,x_cov,y,x_cat=[]):
+        x_cov = self.covariate_net((x_cov,x_cat))
+        h = self.middle_net((x_cov, y))
+        return h
 
 class weibull_net(torch.nn.Module):
+
     def __init__(self, d_in_x,
                  cat_size_list,
                  d_in_y,
@@ -370,7 +375,7 @@ class weibull_net(torch.nn.Module):
                  layers_t,
                  layers,
                  dropout=0.9,
-                 bounding_op=lambda x: x**2,
+                 bounding_op=torch.relu,
                  transformation=torch.tanh,
                  direct_dif = True,
                  objective = 'hazard',
@@ -414,7 +419,7 @@ class weibull_net(torch.nn.Module):
             module_list.append(unbounded_nn_layer(d_in=layers[l_i - 1], d_out=layers[l_i], bounding_op=bounding_op,
                                                 transformation=transformation,dropout=dropout))
         module_list.append(
-            unbounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=lambda x: x))
+            unbounded_nn_layer_last(d_in=layers[-1], d_out=d_out, bounding_op=bounding_op, transformation=linear))
         return multi_input_Sequential(*module_list)
     def init_covariate_net(self,d_in_x,layers_x,cat_size_list,transformation,dropout):
         module_list = [nn_node(d_in=d_in_x,d_out=layers_x[0],cat_size_list=cat_size_list,transformation=transformation,dropout=dropout)]
@@ -477,7 +482,7 @@ class lognormal_net(weibull_net):
                  layers_t,
                  layers,
                  dropout=0.9,
-                 bounding_op=lambda x: x ** 2,
+                 bounding_op=torch.relu,
                  transformation=torch.tanh,
                  direct_dif=True,
                  objective='hazard',

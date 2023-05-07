@@ -57,7 +57,7 @@ if __name__ == '__main__':
             'total_epochs': 50,
             'device': device,
             'patience': 50,
-            'hyperits': 5,
+            'hyperits': 1,
             'selection_criteria':'train',
             'grid_size':100,
             'test_grid_size':100,
